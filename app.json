@@ -27,6 +27,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Vehify uses the camera to scan license plates and VIN barcodes."
+        }
+      ]
+    ]
   }
 }

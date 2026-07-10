@@ -1,4 +1,4 @@
-import { isValidVin, maskVin, normalizeVin, validateVin } from '../vin';
+import { extractVinFromBarcode, isValidVin, maskVin, normalizeVin, validateVin } from '../vin';
 
 describe('vin', () => {
   it('accepts a valid 17-char VIN', () => {
@@ -22,5 +22,19 @@ describe('vin', () => {
 
   it('masks all but the first 8 characters', () => {
     expect(maskVin('1HGCV1F30MA000000')).toBe('1HGCV1F3*********');
+  });
+
+  describe('extractVinFromBarcode', () => {
+    it('accepts a clean VIN payload', () => {
+      expect(extractVinFromBarcode('1HGCV1F30MA000000')).toBe('1HGCV1F30MA000000');
+    });
+
+    it('pulls a VIN out of a wrapped Code 39 payload', () => {
+      expect(extractVinFromBarcode('I1HGCV1F30MA000000I')).toBe('1HGCV1F30MA000000');
+    });
+
+    it('returns null when there is no valid VIN', () => {
+      expect(extractVinFromBarcode('HELLO123')).toBeNull();
+    });
   });
 });

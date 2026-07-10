@@ -31,6 +31,24 @@ export function isValidVin(raw: string): boolean {
   return validateVin(raw).valid;
 }
 
+/**
+ * Pull a valid 17-char VIN out of a scanned barcode payload. VIN barcodes
+ * (Code 39/128) sometimes carry start/stop indicators or extra characters, so
+ * we accept the whole string or any valid 17-char VIN substring. Returns the
+ * normalized VIN, or null if none is found.
+ */
+export function extractVinFromBarcode(raw: string): string | null {
+  const s = normalizeVin(raw);
+  if (isValidVin(s)) return s;
+  const matches = s.match(/[A-HJ-NPR-Z0-9]{17}/g);
+  if (matches) {
+    for (const m of matches) {
+      if (isValidVin(m)) return m;
+    }
+  }
+  return null;
+}
+
 /** Mask a VIN for display where full disclosure isn't needed (spec §10). */
 export function maskVin(vin: string): string {
   const v = normalizeVin(vin);
