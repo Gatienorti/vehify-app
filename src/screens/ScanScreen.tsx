@@ -74,7 +74,7 @@ export default function ScanScreen({ navigation }: Props) {
             <Text style={styles.statusText}>Live camera coming in Phase 4</Text>
           </View>
           <Text style={styles.title}>Scan a plate or VIN</Text>
-          <Text style={styles.subtitle}>Line the plate or VIN up inside the frame.</Text>
+          <Text style={styles.subtitle}>Point at a license plate — or a VIN barcode. We&apos;ll figure out which.</Text>
         </View>
 
         {/* Scanner target */}

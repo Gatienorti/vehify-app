@@ -63,9 +63,9 @@ History        [ SCAN ]        Account
 
 ### Scan Flow (spec §6)
 1. Tap SCAN → request camera permission (first time only) → live camera.
-2. On-device OCR detects plate or VIN, **no network calls**.
+2. On-device auto-detect (barcode=VIN, plate-text=plate — see *Scan auto-detect* below), **no network calls**.
 3. Detection stable ~0.5–1s → freeze frame, show detected text.
-4. User taps **Search** → *now* call backend. Offer **Edit** if OCR is wrong.
+4. User taps **Search** → *now* call backend. Offer **Edit** if the read is wrong.
 5. `Can't scan? Type instead` → manual-entry bottom sheet (VIN or Plate).
 
 ### Manual Entry (spec §7)
@@ -80,7 +80,14 @@ Two self-trained ONNX models run **on-device** (never server-side — that's the
 `src/ml/`: `ctc.ts` / `state.ts` (pure decoders, unit-tested), `config.ts` (shapes + charset/labels/normalization), `types.ts` (`PlateReader`), `MockPlateReader.ts` (for UI before native wiring), `modelAssets.ts` (bundled `require`s).
 
 - ⚠️ **`config.ts` charset order, 52 state labels, and normalization are UNCONFIRMED placeholders** — replace with the training-repo values (`class_to_idx`, transforms) before trusting decode output.
-- **Phase 4b (not built):** install `onnxruntime-react-native` + `react-native-vision-camera` + `vision-camera-resize-plugin`, load models via `expo-asset`, add an alignment guide box + throttled read loop (freeze-on-stable), replace the Scan placeholder. Requires an **Expo dev client** (not Expo Go).
+
+**Scan auto-detect (no manual "VIN or Plate?" toggle).** The scan screen runs two detectors on the live feed at once and routes by whichever fires first — the user just points at whatever they have:
+- **Barcode detected (Code 39) → VIN.** Plates are never barcoded, so a barcode is an unambiguous VIN signal. Decode via vision-camera's built-in **code scanner** — do **not** OCR the VIN text. `plate_ocr` was trained on plates and won't read 17-char VINs reliably.
+- **Stable plate-shaped text read → Plate.** Run `plate_ocr` + `plate_state` → plate + auto-detected state (skips the state dropdown).
+- **Guard:** if an OCR read is too long / fails plate shape (≈17 chars), nudge "Looks like a VIN — line up the barcode below it, or type it." Validate/repair reads with `validateVin` / plate rules.
+- Manual **typing** keeps the VIN/Plate tabs (`ManualEntrySheet`) — the distinction only matters when typing, not when scanning.
+
+**Phase 4b (not built):** install `onnxruntime-react-native` + `react-native-vision-camera` (code scanner + frame processor) + `vision-camera-resize-plugin`; load models via `expo-asset`; overlay `ScannerFrame` on the live preview; throttled read loop with freeze-on-stable; replace the dark placeholder. Requires an **Expo dev client** (not Expo Go); test the camera on a real device (iOS simulators have no camera).
 
 ### Lookup → Confirm → Basic → Upsell (spec §8, §10–12)
 1. **VIN lookup** (free): decode via NHTSA vPIC + recalls → basic summary.
