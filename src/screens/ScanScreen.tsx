@@ -16,7 +16,9 @@ import type { TabScreenProps } from '../types/navigation';
 type Props = TabScreenProps<'Scan'>;
 
 // Dark "camera off" viewport — the live preview replaces this in Phase 4b.
-const VIEWPORT_GRADIENT = ['#0B1220', '#17264F'] as const;
+// Darkens toward the bottom so the floating tab bar sits on the darkest area
+// (no lighter halo around the bar).
+const VIEWPORT_GRADIENT = ['#11203E', '#080D18'] as const;
 
 export default function ScanScreen({ navigation }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -64,7 +66,7 @@ export default function ScanScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={VIEWPORT_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={VIEWPORT_GRADIENT} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         {/* Header */}
