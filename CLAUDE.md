@@ -72,6 +72,16 @@ History        [ SCAN ]        Account
 - **VIN**: 17 chars, exclude `I/O/Q`, clear inline error on invalid.
 - **Plate**: plate number + **state dropdown (required)** for plate→VIN.
 
+### On-device plate scanning (Phase 4) — `src/ml/`
+Two self-trained ONNX models run **on-device** (never server-side — that's the scan promise), bundled in `assets/models/`:
+- **`plate_ocr.onnx`** — CRNN+CTC. Input RGB `[1,3,48,320]` → `[80,1,37]` logits → `ctcGreedyDecode` (37 classes = blank + 36).
+- **`plate_state.onnx`** — MobileNetV3. Input grayscale `[1,1,48,192]` → `[1,52]` softmax → `decodeState` (52 classes). Auto-detects the plate's state, so **scanned** plates skip the state dropdown.
+
+`src/ml/`: `ctc.ts` / `state.ts` (pure decoders, unit-tested), `config.ts` (shapes + charset/labels/normalization), `types.ts` (`PlateReader`), `MockPlateReader.ts` (for UI before native wiring), `modelAssets.ts` (bundled `require`s).
+
+- ⚠️ **`config.ts` charset order, 52 state labels, and normalization are UNCONFIRMED placeholders** — replace with the training-repo values (`class_to_idx`, transforms) before trusting decode output.
+- **Phase 4b (not built):** install `onnxruntime-react-native` + `react-native-vision-camera` + `vision-camera-resize-plugin`, load models via `expo-asset`, add an alignment guide box + throttled read loop (freeze-on-stable), replace the Scan placeholder. Requires an **Expo dev client** (not Expo Go).
+
 ### Lookup → Confirm → Basic → Upsell (spec §8, §10–12)
 1. **VIN lookup** (free): decode via NHTSA vPIC + recalls → basic summary.
 2. **Plate lookup**: cache-first; always show a **"Is this the correct vehicle?"** confirmation. From cache, "No, refresh" can be free; from live API, steer to "Enter VIN instead" (don't allow unlimited free refreshes).
