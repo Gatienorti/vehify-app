@@ -19,6 +19,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 function Tabs() {
   return (
     <Tab.Navigator
+      initialRouteName="Scan"
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
