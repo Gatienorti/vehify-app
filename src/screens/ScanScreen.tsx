@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../theme';
+import { setStatusBarStyle } from 'expo-status-bar';
+import { Keyboard } from 'lucide-react-native';
 import PrimaryButton from '../components/PrimaryButton';
 import ManualEntrySheet from '../components/ManualEntrySheet';
-import { brandGradient } from '../theme/colors';
+import ScannerFrame from '../components/ScannerFrame';
 import { track } from '../config/analytics';
 import { useLookupPlateMutation, useLookupVinMutation } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
@@ -14,12 +15,23 @@ import type { TabScreenProps } from '../types/navigation';
 
 type Props = TabScreenProps<'Scan'>;
 
+// Dark "camera off" viewport — the live preview replaces this in Phase 4b.
+const VIEWPORT_GRADIENT = ['#0B1220', '#17264F'] as const;
+
 export default function ScanScreen({ navigation }: Props) {
-  const { colors, spacing, radius } = useTheme();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [lookupVin, vinState] = useLookupVinMutation();
   const [lookupPlate, plateState] = useLookupPlateMutation();
   const recordLookup = useRecordLookup();
+  const submitting = vinState.isLoading || plateState.isLoading;
+
+  // Dark scanner screen → light status-bar icons while focused; restore on leave.
+  useFocusEffect(
+    useCallback(() => {
+      setStatusBarStyle('light');
+      return () => setStatusBarStyle('dark');
+    }, []),
+  );
 
   const openManual = () => {
     track('manual_entry_opened');
@@ -51,55 +63,68 @@ export default function ScanScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      <View style={[styles.content, { padding: spacing.lg }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Scan a plate or VIN</Text>
-        <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Point your camera at a license plate or VIN to instantly know what car it is.
-        </Text>
+    <View style={styles.container}>
+      <LinearGradient colors={VIEWPORT_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
 
-        {/* Camera viewport placeholder — live OCR arrives in Phase 4 (dev client + vision-camera). */}
-        <View style={[styles.viewport, { borderColor: colors.border, borderRadius: radius.xl }]}>
-          <LinearGradient
-            colors={brandGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.viewportInner, { borderRadius: radius.xl }]}
-          >
-            <Ionicons name="scan-outline" size={72} color={colors.onPrimary} />
-            <Text style={styles.viewportText}>Camera scanner (coming in Phase 4)</Text>
-          </LinearGradient>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.statusPill}>
+            <View style={styles.statusDot} />
+            <Text style={styles.statusText}>Live camera coming in Phase 4</Text>
+          </View>
+          <Text style={styles.title}>Scan a plate or VIN</Text>
+          <Text style={styles.subtitle}>Line the plate or VIN up inside the frame.</Text>
         </View>
 
-        <PrimaryButton
-          label="Enter a plate or VIN"
-          onPress={openManual}
-          loading={vinState.isLoading || plateState.isLoading}
-          style={{ marginTop: spacing.lg }}
-        />
-        <Text style={[styles.helper, { color: colors.textMuted }]} onPress={openManual}>
-          Can&apos;t scan? Type instead
-        </Text>
-      </View>
+        {/* Scanner target */}
+        <View style={styles.stage}>
+          <ScannerFrame />
+          <Text style={styles.hint}>Hold steady — detection happens on your device</Text>
+        </View>
+
+        {/* Actions */}
+        <View style={styles.actions}>
+          <PrimaryButton label="Enter a plate or VIN" onPress={openManual} loading={submitting} />
+          <Pressable onPress={openManual} style={styles.typeRow} hitSlop={8}>
+            <Keyboard size={18} color="#AEB8CC" strokeWidth={2.25} />
+            <Text style={styles.typeText}>Can&apos;t scan? Type instead</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
 
       <ManualEntrySheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         onSubmitVin={onSubmitVin}
         onSubmitPlate={onSubmitPlate}
-        submitting={vinState.isLoading || plateState.isLoading}
+        submitting={submitting}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { flex: 1 },
-  title: { fontSize: 28, fontWeight: '800', marginTop: 8 },
-  subtitle: { fontSize: 15, lineHeight: 22, marginTop: 8 },
-  viewport: { flex: 1, borderWidth: 1, marginTop: 24, overflow: 'hidden' },
-  viewportInner: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  viewportText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', opacity: 0.9 },
-  helper: { fontSize: 15, fontWeight: '600', textAlign: 'center', marginTop: 16 },
+  container: { flex: 1, backgroundColor: '#0B1220' },
+  safe: { flex: 1, paddingHorizontal: 20 },
+  header: { paddingTop: 8, gap: 8 },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#3DD68C' },
+  statusText: { color: '#C7D0E0', fontSize: 12, fontWeight: '600' },
+  title: { color: '#FFFFFF', fontSize: 28, fontWeight: '800', marginTop: 4 },
+  subtitle: { color: '#9AA6BC', fontSize: 15, lineHeight: 21 },
+  stage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
+  hint: { color: '#8492AB', fontSize: 13, textAlign: 'center' },
+  actions: { gap: 14, paddingBottom: 80 },
+  typeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  typeText: { color: '#AEB8CC', fontSize: 15, fontWeight: '600' },
 });

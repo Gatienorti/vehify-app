@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Clock, Scan, User, type LucideIcon } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -15,10 +15,14 @@ import { brandGradient } from '../theme/colors';
 const BAR_BG = '#131B2E';
 const ACTIVE = '#FFFFFF';
 const INACTIVE = '#7B879C';
+const STROKE = 2.25;
 
-const SIDE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  History: 'time-outline',
-  Account: 'person-outline',
+/** Bottom space a screen should reserve so content clears the floating bar. */
+export const TAB_BAR_CLEARANCE = 110;
+
+const SIDE_ICONS: Record<string, LucideIcon> = {
+  History: Clock,
+  Account: User,
 };
 
 export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
@@ -30,7 +34,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   };
 
   return (
-    <View style={[styles.wrap, { paddingBottom: insets.bottom + 10 }]} pointerEvents="box-none">
+    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom - 6, 10) }]} pointerEvents="box-none">
       <View style={styles.bar}>
         {state.routes.map((route, index) => {
           const focused = state.index === index;
@@ -50,13 +54,15 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
                     end={{ x: 1, y: 1 }}
                     style={styles.scanGradient}
                   >
-                    <Ionicons name="scan" size={34} color="#FFFFFF" />
+                    <Scan size={34} color="#FFFFFF" strokeWidth={2.4} />
                   </LinearGradient>
                 </Pressable>
               </View>
             );
           }
 
+          const Icon = SIDE_ICONS[route.name] ?? Clock;
+          const color = focused ? ACTIVE : INACTIVE;
           return (
             <Pressable
               key={route.key}
@@ -65,12 +71,8 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
               onPress={() => go(route.name, route.key, focused)}
               style={styles.tab}
             >
-              <Ionicons
-                name={SIDE_ICONS[route.name] ?? 'ellipse-outline'}
-                size={28}
-                color={focused ? ACTIVE : INACTIVE}
-              />
-              <Text style={[styles.label, { color: focused ? ACTIVE : INACTIVE }]}>{route.name}</Text>
+              <Icon size={26} color={color} strokeWidth={STROKE} />
+              <Text style={[styles.label, { color }]}>{route.name}</Text>
             </Pressable>
           );
         })}

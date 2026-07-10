@@ -20,7 +20,7 @@ function Tabs() {
   return (
     <Tab.Navigator
       tabBar={(props) => <FloatingTabBar {...props} />}
-      screenOptions={{ headerShown: false, sceneStyle: { paddingBottom: 96 } }}
+      screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen

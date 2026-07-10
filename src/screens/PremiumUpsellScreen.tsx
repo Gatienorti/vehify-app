@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { CircleCheckBig } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import PrimaryButton from '../components/PrimaryButton';
 import { track } from '../config/analytics';
@@ -62,7 +62,7 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
           {INCLUDED.map((line) => (
             <View key={line} style={styles.row}>
-              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+              <CircleCheckBig size={20} color={colors.success} strokeWidth={2.25} />
               <Text style={[styles.rowText, { color: colors.text }]}>{line}</Text>
             </View>
           ))}

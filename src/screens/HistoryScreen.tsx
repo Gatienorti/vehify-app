@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { useAppSelector } from '../store/hooks';
 import Badge from '../components/Badge';
+import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
 import type { TabScreenProps } from '../types/navigation';
 import type { HistoryEntry } from '../types/history';
@@ -43,7 +44,7 @@ export default function HistoryScreen({ navigation }: Props) {
         <FlatList
           data={entries}
           keyExtractor={(e) => e.id}
-          contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: TAB_BAR_CLEARANCE, gap: spacing.md }}
           renderItem={({ item }) => (
             <Pressable
               onPress={() =>
