@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import VehicleCard from '../components/VehicleCard';
@@ -31,12 +31,29 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
     navigation.replace('BasicResult', { vin: result.vehicle.vin });
   };
 
-  // "No, refresh" is free ONLY when the match came from cache (spec §9, §10).
-  // From a live result we don't allow unlimited free refreshes — steer to VIN.
-  const refresh = async () => {
+  // Rejected match → straight to manual VIN entry on the Scan tab, never a
+  // silent bounce (the user may have just paid for the plate lookup).
+  const goToVinEntry = () => {
+    navigation.navigate('Tabs', { screen: 'Scan', params: { openVinEntry: true } });
+  };
+
+  // Rejection means different things by source (spec §9, §10):
+  // - cache → likely OUR data is stale: one free live re-fetch.
+  // - live  → the state's CURRENT record disagrees with the car in front of
+  //   the user. That's a genuine caution sign (transferred plate, or the car
+  //   isn't what it's presented as) — warn plainly but hedged (never "Danger"
+  //   on unconfirmed data), then steer to the exact, free VIN check.
+  const reject = async () => {
     track('vehicle_rejected');
     if (!fromCache) {
-      navigation.goBack();
+      Alert.alert(
+        'Plate doesn’t match the car?',
+        'The state’s current plate record points to the vehicle shown. If the car in front of you is different, the plate may have been transferred — or the car may not be what it’s presented as. Before going further, check the VIN printed at the base of the windshield or on the driver-door jamb. A VIN lookup is free and exact.',
+        [
+          { text: 'Enter VIN — free', onPress: goToVinEntry },
+          { text: 'Back', style: 'cancel' },
+        ],
+      );
       return;
     }
     try {
@@ -47,7 +64,7 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
       }).unwrap();
       navigation.replace('VehicleMatch', { result: res, plate, state });
     } catch {
-      navigation.goBack();
+      goToVinEntry();
     }
   };
 
@@ -55,7 +72,7 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
         <Text style={[styles.title, { color: colors.text }]}>Is this the correct vehicle?</Text>
-        <VehicleCard vehicle={result.vehicle} lastVerified={fromCache ? result.lastVerifiedAt : 'Today'} />
+        <VehicleCard vehicle={result.vehicle} lastVerified={fromCache ? (result.lastVerifiedAt ?? undefined) : 'Today'} />
 
         {/* Calm, non-alarming wording per spec §9 — plates transfer, data can lag. */}
         <Text style={[styles.note, { color: colors.textMuted }]}>
@@ -65,16 +82,14 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
 
         <PrimaryButton label="Yes, continue" onPress={confirm} />
         <PrimaryButton
-          label={fromCache ? 'No, refresh' : 'No, this looks wrong'}
+          label={fromCache ? 'No, refresh' : 'Not my car — enter VIN (free)'}
           variant="secondary"
           loading={isLoading}
-          onPress={refresh}
+          onPress={reject}
         />
-        <PrimaryButton
-          label="Enter VIN instead"
-          variant="ghost"
-          onPress={() => navigation.goBack()}
-        />
+        {fromCache ? (
+          <PrimaryButton label="Enter VIN instead" variant="ghost" onPress={goToVinEntry} />
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

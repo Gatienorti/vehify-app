@@ -4,7 +4,7 @@ import type { AppDispatch, RootState } from '../../store';
 import {
   addEntry,
   clearHistory,
-  markPremium,
+  markPurchased,
   setEntries,
 } from '../../store/historySlice';
 import type { HistoryEntry } from '../../types/history';
@@ -28,7 +28,7 @@ export async function hydrateHistory(dispatch: AppDispatch): Promise<void> {
 /** Persist history to disk whenever it changes. */
 export const historyPersistenceMiddleware = createListenerMiddleware();
 historyPersistenceMiddleware.startListening({
-  matcher: isAnyOf(addEntry, markPremium, clearHistory),
+  matcher: isAnyOf(addEntry, markPurchased, clearHistory),
   effect: async (_action, listenerApi) => {
     const state = listenerApi.getState() as RootState;
     try {

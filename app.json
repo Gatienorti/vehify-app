@@ -35,8 +35,8 @@
           "cameraPermission": "Vehify uses the camera to scan license plates and VIN barcodes."
         }
       ],
-      "onnxruntime-react-native",
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store"
     ]
   }
 }

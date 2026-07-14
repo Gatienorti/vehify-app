@@ -48,8 +48,12 @@ export default function HistoryScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <Pressable
               onPress={() =>
-                item.tier === 'premium' && item.reportId
-                  ? navigation.navigate('PremiumReport', { vin: item.vin, reportId: item.reportId })
+                item.tier !== 'basic' && item.reportId
+                  ? navigation.navigate('PremiumReport', {
+                      vin: item.vin,
+                      reportId: item.reportId,
+                      tier: item.tier,
+                    })
                   : navigation.navigate('BasicResult', { vin: item.vin })
               }
               style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}

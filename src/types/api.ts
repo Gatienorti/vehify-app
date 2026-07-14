@@ -1,4 +1,4 @@
-import type { BasicReport, LookupSource, PremiumReport, Vehicle } from './vehicle';
+import type { BasicReport, LookupSource, PaidTier, Report, Vehicle } from './vehicle';
 
 /** Request/response contracts mirror the Laravel backend (../vehify-web, spec §17). */
 
@@ -9,7 +9,8 @@ export interface PlateLookupRequest {
 
 export interface PlateLookupResponse {
   source: LookupSource;
-  lastVerifiedAt: string; // ISO date
+  /** ISO date; the backend may return null for a never-verified record. */
+  lastVerifiedAt: string | null;
   isLiveVerified: boolean;
   vehicle: Vehicle;
 }
@@ -32,6 +33,7 @@ export type BasicVehicleResponse = BasicReport;
 
 export interface PurchaseStartRequest {
   vin: string;
+  tier: PaidTier;
   productId: string;
 }
 
@@ -43,10 +45,12 @@ export interface PurchaseConfirmRequest {
   purchaseToken: string;
   appStoreTransactionId: string;
   platform: 'ios' | 'android';
+  tier: PaidTier;
 }
 
 export interface PurchaseConfirmResponse {
   reportId: string;
+  tier: PaidTier;
 }
 
-export type ReportResponse = PremiumReport & { id: string };
+export type ReportResponse = Report & { id: string };

@@ -1,11 +1,7 @@
-import {
-  createApi,
-  fetchBaseQuery,
-  type BaseQueryFn,
-  type FetchArgs,
-  type FetchBaseQueryError,
-} from '@reduxjs/toolkit/query/react';
-import { API_BASE_URL, USE_MOCKS } from '../config/env';
+import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { API_BASE_URL } from '../config/env';
+import { getDeviceId } from '../config/deviceId';
+import type { PaidTier } from '../types/vehicle';
 import type {
   BasicVehicleResponse,
   PlateLookupRequest,
@@ -19,104 +15,54 @@ import type {
   VinLookupRequest,
   VinLookupResponse,
 } from '../types/api';
-import {
-  mockBasic,
-  mockPlateLookup,
-  mockReport,
-  mockVinLookup,
-} from './mockData';
-
-type Query = BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError>;
-
-const rawBaseQuery: Query = fetchBaseQuery({ baseUrl: `${API_BASE_URL}/api` });
 
 /**
- * The ONLY place the app talks to the Laravel backend. While USE_MOCKS is on,
- * endpoints resolve from the in-app mock provider so every flow works before
- * the backend exists. Screens always consume these RTK Query hooks — never
- * raw fetch, and never a vehicle-data provider directly (spec §19).
+ * The ONLY place the app talks to the Laravel backend (../vehify-web) — and
+ * the backend is the ONLY data source, mock or real: its provider layer serves
+ * mock data until real providers are wired (spec §19). No in-app mocks.
+ * Screens always consume these RTK Query hooks — never raw fetch.
  */
 export const api = createApi({
   reducerPath: 'api',
-  baseQuery: rawBaseQuery,
+  baseQuery: fetchBaseQuery({
+    baseUrl: `${API_BASE_URL}/api`,
+    // Anonymous device identity on every call — lets the backend keep history
+    // and purchases for this phone before login (claimed at /history/sync).
+    prepareHeaders: async (headers) => {
+      headers.set('X-Device-Id', await getDeviceId());
+      return headers;
+    },
+  }),
   tagTypes: ['VehicleBasic', 'Report'],
   endpoints: (builder) => ({
     lookupVin: builder.mutation<VinLookupResponse, VinLookupRequest>({
-      queryFn: async (arg, apiCtx, extra) => {
-        if (USE_MOCKS) return { data: mockVinLookup(arg.vin) };
-        const res = await rawBaseQuery(
-          { url: '/lookup/vin', method: 'POST', body: arg },
-          apiCtx,
-          extra,
-        );
-        return res as { data: VinLookupResponse };
-      },
+      query: (body) => ({ url: '/lookup/vin', method: 'POST', body }),
     }),
 
     lookupPlate: builder.mutation<PlateLookupResponse, PlateLookupRequest>({
-      queryFn: async (arg, apiCtx, extra) => {
-        if (USE_MOCKS) return { data: mockPlateLookup(arg.plate, arg.state) };
-        const res = await rawBaseQuery(
-          { url: '/lookup/plate', method: 'POST', body: arg },
-          apiCtx,
-          extra,
-        );
-        return res as { data: PlateLookupResponse };
-      },
+      query: (body) => ({ url: '/lookup/plate', method: 'POST', body }),
     }),
 
     refreshPlate: builder.mutation<PlateLookupResponse, PlateRefreshRequest>({
-      queryFn: async (arg, apiCtx, extra) => {
-        if (USE_MOCKS) return { data: mockPlateLookup(arg.plate, arg.state) };
-        const res = await rawBaseQuery(
-          { url: '/lookup/plate/refresh', method: 'POST', body: arg },
-          apiCtx,
-          extra,
-        );
-        return res as { data: PlateLookupResponse };
-      },
+      query: (body) => ({ url: '/lookup/plate/refresh', method: 'POST', body }),
     }),
 
     getVehicleBasic: builder.query<BasicVehicleResponse, string>({
-      queryFn: async (vin, apiCtx, extra) => {
-        if (USE_MOCKS) return { data: mockBasic(vin) };
-        const res = await rawBaseQuery(`/vehicle/${vin}/basic`, apiCtx, extra);
-        return res as { data: BasicVehicleResponse };
-      },
+      query: (vin) => `/vehicle/${vin}/basic`,
       providesTags: (_r, _e, vin) => [{ type: 'VehicleBasic', id: vin }],
     }),
 
     startPurchase: builder.mutation<PurchaseStartResponse, PurchaseStartRequest>({
-      queryFn: async (arg, apiCtx, extra) => {
-        if (USE_MOCKS) return { data: { purchaseToken: `mock-token-${arg.vin}` } };
-        const res = await rawBaseQuery(
-          { url: '/report/purchase/start', method: 'POST', body: arg },
-          apiCtx,
-          extra,
-        );
-        return res as { data: PurchaseStartResponse };
-      },
+      query: (body) => ({ url: '/report/purchase/start', method: 'POST', body }),
     }),
 
     confirmPurchase: builder.mutation<PurchaseConfirmResponse, PurchaseConfirmRequest>({
-      queryFn: async (arg, apiCtx, extra) => {
-        if (USE_MOCKS) return { data: { reportId: `mock-report-${arg.purchaseToken}` } };
-        const res = await rawBaseQuery(
-          { url: '/report/purchase/confirm', method: 'POST', body: arg },
-          apiCtx,
-          extra,
-        );
-        return res as { data: PurchaseConfirmResponse };
-      },
+      query: (body) => ({ url: '/report/purchase/confirm', method: 'POST', body }),
       invalidatesTags: ['Report'],
     }),
 
-    getReport: builder.query<ReportResponse, { id: string; vin: string }>({
-      queryFn: async (arg, apiCtx, extra) => {
-        if (USE_MOCKS) return { data: mockReport(arg.vin, arg.id) };
-        const res = await rawBaseQuery(`/report/${arg.id}`, apiCtx, extra);
-        return res as { data: ReportResponse };
-      },
+    getReport: builder.query<ReportResponse, { id: string; vin: string; tier: PaidTier }>({
+      query: (arg) => `/report/${arg.id}`,
       providesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),
   }),

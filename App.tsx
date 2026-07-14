@@ -8,11 +8,13 @@ import { store } from './src/store';
 import { ThemeProvider } from './src/theme';
 import { RootNavigator } from './src/navigation/AppNavigator';
 import { hydrateHistory } from './src/features/history/localHistory';
+import { hydratePurchases } from './src/features/purchases/localPurchases';
 import { track } from './src/config/analytics';
 
 export default function App() {
   useEffect(() => {
     void hydrateHistory(store.dispatch);
+    void hydratePurchases(store.dispatch);
     track('app_opened');
   }, []);
 

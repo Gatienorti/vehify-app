@@ -3,13 +3,14 @@ import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 /**
- * A plate-shaped alignment frame with corner brackets and a looping scan line.
- * This is the visual target users line the plate/VIN up inside. When the real
- * camera lands (Phase 4b), this overlays the live preview unchanged.
+ * Alignment frame with corner brackets and a looping scan line. One size fits
+ * the unified scanner: wide enough for a license plate straight-on and for a
+ * door-jamb VIN label strip (detection is automatic — no plate/VIN mode).
  */
 
-const FRAME_W = 280;
-const FRAME_H = 172;
+const FRAME_W = 320;
+const FRAME_H = 180;
+
 const CORNER = 34;
 const CORNER_THICKNESS = 4;
 
@@ -46,7 +47,7 @@ export default function ScannerFrame() {
   });
 
   return (
-    <View style={styles.frame}>
+    <View style={[styles.frame, { width: FRAME_W, height: FRAME_H }]}>
       <Corner style={{ top: 0, left: 0, borderTopWidth: CORNER_THICKNESS, borderLeftWidth: CORNER_THICKNESS, borderTopLeftRadius: 10 }} />
       <Corner style={{ top: 0, right: 0, borderTopWidth: CORNER_THICKNESS, borderRightWidth: CORNER_THICKNESS, borderTopRightRadius: 10 }} />
       <Corner style={{ bottom: 0, left: 0, borderBottomWidth: CORNER_THICKNESS, borderLeftWidth: CORNER_THICKNESS, borderBottomLeftRadius: 10 }} />
@@ -65,7 +66,7 @@ export default function ScannerFrame() {
 }
 
 const styles = StyleSheet.create({
-  frame: { width: FRAME_W, height: FRAME_H, justifyContent: 'flex-start' },
+  frame: { justifyContent: 'flex-start' },
   corner: {
     position: 'absolute',
     width: CORNER,

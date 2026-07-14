@@ -15,6 +15,7 @@ export type AnalyticsEvent =
   | 'plate_detected'
   | 'vin_detected'
   | 'scan_confirmed'
+  | 'scan_torch_toggled'
   | 'manual_entry_opened'
   | 'manual_plate_entered'
   | 'manual_vin_entered'
@@ -31,6 +32,9 @@ export type AnalyticsEvent =
   | 'premium_purchase_started'
   | 'premium_purchase_completed'
   | 'premium_purchase_failed'
+  | 'plate_credit_applied'
+  | 'restore_purchases_tapped'
+  | 'purchases_restored'
   | 'account_prompt_viewed'
   | 'account_created'
   | 'history_viewed';

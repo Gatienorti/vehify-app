@@ -1,13 +1,15 @@
 # CLAUDE.md — Vehify Mobile
 
-> Scan-first used-car checker. Scan a plate or VIN → instant free basic summary → paid full history report.
+> Scan-first used-car checker. Scan a plate or VIN → instant free basic summary → paid Buyer's Analysis → full history report.
 > Full product spec: `~/Downloads/vehicle_lookup_app_claude_code_full_spec.md` (source of truth for product decisions).
+> **Pricing/report tiers: `~/Downloads/Vehify_Report_Tiers_and_API_Cost_MVP_v2.pdf` is the source of truth** — it supersedes the spec's older single-$4.99 model. Prices live in code at `src/config/pricing.ts`.
 
 ## Status
 
-**Scaffolded (Phase 1–3 + mock premium).** Expo SDK 57 · RN 0.86 · React 19 · TypeScript strict.
-Every flow works end-to-end against in-app mocks (`EXPO_PUBLIC_USE_MOCKS=true`). Still to build:
-camera OCR (Phase 4, needs a dev client), real RevenueCat purchases, real backend, account sign-in.
+**Scaffolded (Phase 1–3 + mock purchases).** Expo SDK 57 · RN 0.86 · React 19 · TypeScript strict.
+**All data — mock or real — comes from the Laravel backend** (`../vehify-web`, its mock provider
+layer); the in-app mock layer was removed. Point `EXPO_PUBLIC_API_BASE_URL` at the running backend.
+Still to build: real RevenueCat purchases, real providers in the backend, account sign-in.
 See `README.md` for the built/not-built breakdown.
 
 - **Mobile app** (this repo): `/Users/gatien/Desktop/vehify/vehify-mobile` — TypeScript React Native (Expo), iOS + Android.
@@ -37,9 +39,9 @@ See `README.md` for the built/not-built breakdown.
 | Build | `eas build --platform [ios\|android]` |
 | Backend | `cd ../vehify-web` |
 
-**Stack (installed):** Expo SDK 57 · RN 0.86 · React 19 · TypeScript strict · Redux Toolkit + RTK Query · React Navigation 7 (native-stack + bottom-tabs) · expo-linear-gradient · AsyncStorage (local history) · Jest + RN Testing Library.
+**Stack (installed):** Expo SDK 57 · RN 0.86 · React 19 · TypeScript strict · Redux Toolkit + RTK Query · React Navigation 7 (native-stack + bottom-tabs) · expo-linear-gradient · AsyncStorage (local history) · expo-camera + react-native-mlkit-ocr + expo-image-manipulator (on-device plate scanning) · Jest + RN Testing Library.
 
-**Planned (later phases):** react-native-vision-camera + ML Kit text recognition (on-device OCR) · RevenueCat (one-time non-consumable report purchases).
+**Planned (later phases):** RevenueCat (one-time non-consumable report purchases).
 
 > Camera OCR (ML Kit) needs native modules → **Expo dev client / config plugins**, not Expo Go.
 
@@ -53,11 +55,20 @@ See `README.md` for the built/not-built breakdown.
 History        [ SCAN ]        Account
 ```
 
-- **History** — recent lookups, saved vehicles, purchased reports, `BASIC`/`PREMIUM` badges. Purchased reports live here — **no separate Reports tab**.
+- **History** — recent lookups, saved vehicles, purchased reports, `BASIC`/`ANALYSIS`/`FULL HISTORY` badges. Purchased reports live here — **no separate Reports tab**.
 - **SCAN** — center, larger, camera icon. Opens the live scanner. The main action.
 - **Account** — optional Apple/Google sign-in, restore purchases, settings, support, legal.
 
-**Business model:** free basic lookup builds trust; the **paid full history report ($4.99 target) is the revenue product.** Optimize for a one-time consumer, not a dealer power user. No credits, no subscription at launch.
+**Business model (Report Tiers v2 — progressively more valuable reports):**
+
+| Tier | Question answered | Customer price | Notes |
+|------|-------------------|----------------|-------|
+| Free VIN lookup | Is this the correct vehicle? | **FREE** | NHTSA decode + recalls |
+| Plate lookup | Which vehicle is this? | **$0.25** | Plate→VIN; **credited toward Buyer's Analysis** |
+| Buyer's Analysis | Should I buy this vehicle? | **$2.99** (**$2.74** after plate credit) | AI Buy Score, market value, MSRP, suggested offer, negotiation, recalls |
+| Complete Vehicle History | What happened to this VIN? | **+$5 upgrade → $7.99** | Everything above **+** accident/title/theft/odometer/owners/auction/service |
+
+Complete History is an **upgrade-only** path — the user buys Buyer's Analysis first, then adds full history for +$5. Optimize for a one-time consumer, not a dealer power user. No credits, no subscription at launch. `ReportTier = 'basic' | 'buyers_analysis' | 'complete_history'`.
 
 ## Core Flows
 
@@ -72,28 +83,28 @@ History        [ SCAN ]        Account
 - **VIN**: 17 chars, exclude `I/O/Q`, clear inline error on invalid.
 - **Plate**: plate number + **state dropdown (required)** for plate→VIN.
 
-### On-device plate scanning (Phase 4) — `src/ml/`
-Two self-trained ONNX models run **on-device** (never server-side — that's the scan promise), bundled in `assets/models/`:
-- **`plate_ocr.onnx`** — CRNN+CTC. Input RGB `[1,3,48,320]` → `[80,1,37]` logits → `ctcGreedyDecode` (37 classes = blank + 36).
-- **`plate_state.onnx`** — MobileNetV3. Input grayscale `[1,1,48,192]` → `[1,52]` softmax → `decodeState` (52 classes). Auto-detects the plate's state, so **scanned** plates skip the state dropdown.
+### On-device scanning (Phase 4, built) — `src/ml/`
+Google **ML Kit text recognition** (`react-native-mlkit-ocr`) runs **on-device** (never server-side — that's the scan promise). A prior self-trained ONNX pipeline was removed — it produced garbage reads; don't reintroduce it. Pipeline (`readPlateOnce` in `plateProcessor.ts`, one call per 500ms loop tick):
+1. `expo-camera` photo (1080p `pictureSize`, fast) → **normalize-first**: resize to 900w in the SAME `manipulateAsync` call as the crop. Normalizing bakes the EXIF rotation into pixels — cropping the raw photo crops the unrotated sensor buffer and lands in the wrong place (hard-won bug). Crop = the on-screen `ScannerFrame` region mapped via `frameCrop.ts` (cover-mode math, `Math.min` scale).
+2. One locate OCR pass. `findVinInBlocks` (`vinDetect.ts`) first — a 17-char VIN wins immediately (free route). VIN candidates are **per-line only** (never stitch lines: "TEXAS"+"BC5X489"+"TEXAS" = 17 chars) and must pass the **ISO 3779 check digit** (`hasValidCheckDigit` in `utils/vin.ts`). Else `findPlateInBlocks` locates the most plate-like token + bounding region (`plateScore.ts`).
+3. **6 tight re-crops** (varied padding, upscaled to 300px) around the region → per-character **consensus voting** (`vote.ts`, digit-twin rule: 2/Z, 5/S, 8/B, 6/G → digit wins; I/O/Q→1/0/0 since US plates never issue them). Confirm sheet opens after **2 consecutive confident ticks** agree.
+4. **4 wide vertical re-crops** (upscaled to 500px, concurrent with step 3, skipped once a state has 2 votes) → state detection (`stateDetect.ts`): exact name → fuzzy (Levenshtein ≤2) → unambiguous 2-letter code → slogans (`STATE_SLOGANS`, "EMPIRE STATE" → NY). Most-voted wins; null → user picks in the confirm sheet.
 
-`src/ml/`: `ctc.ts` / `state.ts` (pure decoders, unit-tested), `config.ts` (shapes + charset/labels/normalization), `types.ts` (`PlateReader`), `MockPlateReader.ts` (for UI before native wiring), `modelAssets.ts` (bundled `require`s).
+`stateDetect.ts` / `plateScore.ts` / `vote.ts` / `vinDetect.ts` / `frameCrop.ts` are pure and unit-tested (`src/ml/__tests__/`).
 
-- ⚠️ **`config.ts` charset order, 52 state labels, and normalization are UNCONFIRMED placeholders** — replace with the training-repo values (`class_to_idx`, transforms) before trusting decode output.
-
-**Scan auto-detect (no manual "VIN or Plate?" toggle).** The scan screen runs two detectors on the live feed at once and routes by whichever fires first — the user just points at whatever they have:
-- **Barcode detected (Code 39) → VIN.** Plates are never barcoded, so a barcode is an unambiguous VIN signal. Decode via vision-camera's built-in **code scanner** — do **not** OCR the VIN text. `plate_ocr` was trained on plates and won't read 17-char VINs reliably.
-- **Stable plate-shaped text read → Plate.** Run `plate_ocr` + `plate_state` → plate + auto-detected state (skips the state dropdown).
-- **Guard:** if an OCR read is too long / fails plate shape (≈17 chars), nudge "Looks like a VIN — line up the barcode below it, or type it." Validate/repair reads with `validateVin` / plate rules.
-- Manual **typing** keeps the VIN/Plate tabs (`ManualEntrySheet`) — the distinction only matters when typing, not when scanning.
-
-**Phase 4b (not built):** install `onnxruntime-react-native` + `react-native-vision-camera` (code scanner + frame processor) + `vision-camera-resize-plugin`; load models via `expo-asset`; overlay `ScannerFrame` on the live preview; throttled read loop with freeze-on-stable; replace the dark placeholder. Requires an **Expo dev client** (not Expo Go); test the camera on a real device (iOS simulators have no camera).
+**One unified scan (no plate/VIN mode toggle).** `ScanScreen` runs all detectors at once; priority **barcode → VIN text → plate**:
+- **Barcode/QR → VIN (free).** Plates are never barcoded, so any barcode is a VIN. `barcodeScannerSettings` watches QR (Tesla door jamb), DataMatrix, PDF417, Code39/128 on the live preview — no photo needed. `extractVinFromBarcode` digs the VIN out of any payload shape. Opens editable **`VinConfirmSheet`**.
+- **VIN text → VIN (free).** Door-jamb printed VIN via the locate pass (step 2 above).
+- **Plate loop → Plate ($0.25).** Opens **`ScanConfirmSheet`** — editable plate + state picker + explicit `Search plate · $0.25` confirm. Manual plate entry (`ManualEntrySheet`) routes through the same sheet.
+- Camera UX: preview live on tab arrival (scan loop only after "Start scanning"), pinch-to-zoom (gesture wraps the whole screen — wrapping only `CameraView` gets buried under the UI), torch toggle, `autofocus="off"` (expo-camera semantics are inverted: "on" = focus-once-then-LOCK, "off" = continuous — a scanner needs continuous).
+- Requires an **Expo dev client** (`npx expo run:ios --device`, not Expo Go); iOS simulators have no camera. ML Kit reads garbage off monitors/screens (moiré) — test against real plates or paper printouts.
 
 ### Lookup → Confirm → Basic → Upsell (spec §8, §10–12)
 1. **VIN lookup** (free): decode via NHTSA vPIC + recalls → basic summary.
 2. **Plate lookup**: cache-first; always show a **"Is this the correct vehicle?"** confirmation. From cache, "No, refresh" can be free; from live API, steer to "Enter VIN instead" (don't allow unlimited free refreshes).
-3. **Basic result** (free): YMM, trim, specs, open recalls, est. value if available, basic summary.
-4. **Premium upsell**: `Unlock Complete History — $4.99`. IAP → report screen with **AI Buy Score** (score + reason, never a bare number; green 80+, yellow 60–79, red <60).
+3. **Basic result** (free): YMM, trim, specs, open recalls, basic summary.
+4. **Buyer's Analysis upsell**: `Get Buyer's Analysis — $2.99` (or `$2.74` with plate credit). IAP → report with **AI Buy Score** (score + reason, never a bare number; green 80+, yellow 60–79, red <60), market value, MSRP, suggested offer, recommendation.
+5. **Complete History upgrade**: from the Buyer's Analysis report, `Add Complete History — +$5` → same report screen now also shows accident/title/theft/odometer/owners. One shared `PremiumUpsell` screen + one shared `PremiumReport` screen, both parameterized by `tier`.
 
 ### Local History (spec §14)
 Store lookups on-device **before** any login (VIN, plate/state, YMM, date, basic snapshot, premium flag + report id). Prompt for an account only *after* value is delivered (2nd launch, after purchase, on "Protect reports") — never block app use.
@@ -133,7 +144,7 @@ The app consumes these endpoints (spec §17). Keep request/response types in `sr
 
 ## Purchases (spec §16)
 
-- One-time **non-consumable** premium report(s) via RevenueCat: Full Report ($4.99), Full Report Plus ($7.99/$9.99).
+- One-time **non-consumable** report products via RevenueCat (ids in `src/config/pricing.ts`): `buyers_analysis` ($2.99) and `complete_history_upgrade` (+$5). Complete History is an upgrade purchased *after* Buyer's Analysis.
 - Link a purchased report to the local device first; sync to backend if/when the user creates an account.
 - Always support **Restore Purchases**.
 

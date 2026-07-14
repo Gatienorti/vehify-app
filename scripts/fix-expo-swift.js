@@ -50,6 +50,5 @@ for (const file of walk(root)) {
 }
 
 if (changed > 0) {
-  // eslint-disable-next-line no-console
   console.log(`[fix-expo-swift] patched ${changed} file(s) for Xcode 26 / Swift 6`);
 }

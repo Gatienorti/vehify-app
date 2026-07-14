@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronRight,
@@ -10,7 +10,8 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../theme';
-import { useAppSelector } from '../store/hooks';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { addEntry, markPurchased } from '../store/historySlice';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -18,20 +19,58 @@ import type { TabScreenProps } from '../types/navigation';
 
 type Props = TabScreenProps<'Account'>;
 
-function Row({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress?: () => void }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.row, { borderColor: colors.border }]}>
+    <Pressable onPress={onPress} disabled={!onPress} style={[styles.row, { borderColor: colors.border }]}>
       <Icon size={21} color={colors.textMuted} strokeWidth={2.25} />
       <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
       <ChevronRight size={19} color={colors.textMuted} strokeWidth={2.25} style={{ marginLeft: 'auto' }} />
-    </View>
+    </Pressable>
   );
 }
 
 export default function AccountScreen(_props: Props) {
   const { colors, spacing } = useTheme();
+  const dispatch = useAppDispatch();
   const entryCount = useAppSelector((s) => s.history.entries.length);
+  const historyEntries = useAppSelector((s) => s.history.entries);
+  const purchases = useAppSelector((s) => s.purchases.records);
+
+  // Mock restore: re-link every purchase on this device back into history
+  // (spec §16 — always support Restore Purchases). The RevenueCat phase swaps
+  // the source from the local slice to store receipts; the flow shape stays.
+  const restorePurchases = () => {
+    track('restore_purchases_tapped');
+    if (purchases.length === 0) {
+      Alert.alert('Nothing to restore', 'No report purchases were found for this device.');
+      return;
+    }
+    purchases.forEach((p) => {
+      const existing = historyEntries.find((e) => e.vin === p.vin);
+      if (existing) {
+        dispatch(markPurchased({ vin: p.vin, tier: p.tier, reportId: p.reportId }));
+      } else {
+        // History was cleared — recreate a minimal entry so the report is
+        // reachable again (title falls back to the VIN).
+        dispatch(
+          addEntry({
+            id: `${p.vin}-restored-${p.purchasedAt}`,
+            vin: p.vin,
+            lookupType: 'vin',
+            lookedUpAt: p.purchasedAt,
+            tier: p.tier,
+            reportId: p.reportId,
+          }),
+        );
+      }
+    });
+    track('purchases_restored', { count: purchases.length });
+    Alert.alert(
+      'Purchases restored',
+      `${purchases.length} report${purchases.length === 1 ? '' : 's'} restored to your History tab.`,
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -59,7 +98,7 @@ export default function AccountScreen(_props: Props) {
         </View>
 
         <View style={{ gap: 0 }}>
-          <Row icon={RefreshCw} label="Restore purchases" />
+          <Row icon={RefreshCw} label="Restore purchases" onPress={restorePurchases} />
           <Row icon={Settings} label="Settings" />
           <Row icon={HelpCircle} label="Support" />
           <Row icon={FileText} label="Legal & privacy" />

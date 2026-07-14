@@ -3,26 +3,32 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 import type { ReportTier } from '../types/vehicle';
 
+const LABELS: Record<ReportTier, string> = {
+  basic: 'BASIC',
+  buyers_analysis: 'ANALYSIS',
+  complete_history: 'FULL HISTORY',
+};
+
 export default function Badge({ tier }: { tier: ReportTier }) {
   const { colors, radius } = useTheme();
-  const isPremium = tier === 'premium';
+  const isPaid = tier !== 'basic';
   return (
     <View
       style={[
         styles.badge,
         {
           borderRadius: radius.sm,
-          backgroundColor: isPremium ? colors.premium : colors.surfaceAlt,
+          backgroundColor: isPaid ? colors.premium : colors.surfaceAlt,
         },
       ]}
     >
       <Text
         style={[
           styles.text,
-          { color: isPremium ? colors.onPrimary : colors.textMuted },
+          { color: isPaid ? colors.onPrimary : colors.textMuted },
         ]}
       >
-        {isPremium ? 'PREMIUM' : 'BASIC'}
+        {LABELS[tier]}
       </Text>
     </View>
   );

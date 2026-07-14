@@ -1,5 +1,4 @@
-export * from './types';
-export * from './ctc';
-export * from './state';
-export { MockPlateReader } from './MockPlateReader';
-export * as mlConfig from './config';
+export { readPlateOnce, type SingleRead } from './plateProcessor';
+export { detectState, detectSlogan, STATE_SLOGANS } from './stateDetect';
+export { findPlateInBlocks, scorePlateText, isStateText } from './plateScore';
+export { voteOnReads, isAcceptableVote, type VoteResult } from './vote';

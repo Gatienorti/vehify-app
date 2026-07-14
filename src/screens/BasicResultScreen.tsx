@@ -6,6 +6,8 @@ import VehicleCard from '../components/VehicleCard';
 import PrimaryButton from '../components/PrimaryButton';
 import { track } from '../config/analytics';
 import { useGetVehicleBasicQuery } from '../services/api';
+import { useAppSelector } from '../store/hooks';
+import { PRICING, buyersAnalysisPrice, formatUsd } from '../config/pricing';
 import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'BasicResult'>;
@@ -14,11 +16,29 @@ type Props = StackScreenProps<'BasicResult'>;
 export default function BasicResultScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
   const { vin } = route.params;
-  const { data, isLoading } = useGetVehicleBasicQuery(vin);
+  const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin);
+  const historyEntry = useAppSelector((s) => s.history.entries.find((e) => e.vin === vin));
+  // Purchases are the durable ownership record (they survive a history clear).
+  const purchase = useAppSelector((s) => s.purchases.records.find((r) => r.vin === vin));
+  // The plate fee is credited toward Buyer's Analysis — earned when this
+  // vehicle was reached via a (paid) plate lookup (Report Tiers v2, tier 2).
+  const hasPlateCredit = historyEntry?.lookupType === 'plate';
 
   useEffect(() => {
     track('basic_report_viewed', { vin });
   }, [vin]);
+
+  if (isError) {
+    return (
+      <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>Couldn&apos;t load this vehicle</Text>
+        <Text style={[styles.errorBody, { color: colors.textMuted }]}>
+          Check your connection and try again.
+        </Text>
+        <PrimaryButton label="Try again" onPress={() => void refetch()} style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }} />
+      </SafeAreaView>
+    );
+  }
 
   if (isLoading || !data) {
     return (
@@ -28,48 +48,52 @@ export default function BasicResultScreen({ navigation, route }: Props) {
     );
   }
 
-  const recallText =
-    data.recalls.length === 0
-      ? 'No open recalls found.'
-      : `${data.recalls.length} open recall${data.recalls.length === 1 ? '' : 's'} found.`;
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
-        <Text style={[styles.eyebrow, { color: colors.textMuted }]}>Basic Vehicle Check</Text>
+        <Text style={[styles.eyebrow, { color: colors.textMuted }]}>Vehicle Verified</Text>
         <VehicleCard vehicle={data.vehicle} />
-
-        <View style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
-          <Text style={[styles.statLabel, { color: colors.textMuted }]}>Recalls</Text>
-          <Text style={[styles.statValue, { color: data.recalls.length ? colors.warning : colors.success }]}>{recallText}</Text>
-          {data.estimatedValue ? (
-            <>
-              <Text style={[styles.statLabel, { color: colors.textMuted, marginTop: 12 }]}>Estimated value</Text>
-              <Text style={[styles.statValue, { color: colors.text }]}>
-                ${data.estimatedValue.toLocaleString()}
-              </Text>
-            </>
-          ) : null}
-        </View>
 
         {data.summary ? (
           <Text style={[styles.summary, { color: colors.text }]}>{data.summary}</Text>
         ) : null}
 
-        {/* Upsell to the paid report — the revenue product (spec §12). */}
-        <View style={[styles.upsell, { backgroundColor: colors.surfaceAlt, borderRadius: radius.lg }]}>
-          <Text style={[styles.upsellText, { color: colors.text }]}>
-            Unlock the full report to check accident history, title issues, theft records, odometer
-            problems, and auction history.
-          </Text>
-        </View>
-        <PrimaryButton
-          label="Unlock Complete History — $4.99"
-          onPress={() => {
-            track('premium_cta_viewed', { vin });
-            navigation.navigate('PremiumUpsell', { vin });
-          }}
-        />
+        {purchase ? (
+          /* Report already purchased — never re-sell a non-consumable. */
+          <PrimaryButton
+            label="View your report"
+            onPress={() =>
+              navigation.navigate('PremiumReport', {
+                vin,
+                reportId: purchase.reportId,
+                tier: purchase.tier,
+              })
+            }
+          />
+        ) : (
+          <>
+            {/* Upsell to Buyer's Analysis — "should I buy this?" (Report Tiers
+                v2, tier 3). Full history is a further upgrade from that report. */}
+            <View style={[styles.upsell, { backgroundColor: colors.surfaceAlt, borderRadius: radius.lg }]}>
+              <Text style={[styles.upsellText, { color: colors.text }]}>
+                Get the Buyer&apos;s Analysis for an AI Buy Score, market value, a suggested offer,
+                and negotiation advice — so you know whether this is the right car at the right
+                price.
+              </Text>
+              {hasPlateCredit ? (
+                <Text style={[styles.creditNote, { color: colors.success }]}>
+                  Your {formatUsd(PRICING.plateCredit)} plate credit is applied.
+                </Text>
+              ) : null}
+            </View>
+            <PrimaryButton
+              label={`Get Buyer's Analysis — ${formatUsd(buyersAnalysisPrice(hasPlateCredit))}`}
+              onPress={() =>
+                navigation.navigate('PremiumUpsell', { vin, tier: 'buyers_analysis', hasPlateCredit })
+              }
+            />
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -79,10 +103,10 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   eyebrow: { fontSize: 13, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  stat: { borderWidth: 1, padding: 16 },
-  statLabel: { fontSize: 13, fontWeight: '600' },
-  statValue: { fontSize: 17, fontWeight: '700', marginTop: 2 },
   summary: { fontSize: 15, lineHeight: 22 },
   upsell: { padding: 16 },
   upsellText: { fontSize: 14, lineHeight: 20 },
+  creditNote: { fontSize: 13, fontWeight: '700', marginTop: 8 },
+  errorTitle: { fontSize: 18, fontWeight: '700' },
+  errorBody: { fontSize: 14, marginTop: 6 },
 });

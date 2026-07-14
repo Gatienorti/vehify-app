@@ -11,13 +11,15 @@ unlock a paid full history report. iOS + Android, built with Expo + TypeScript.
 
 ```bash
 npm install
-cp .env.example .env      # defaults run against in-app mocks
+cp .env.example .env      # point EXPO_PUBLIC_API_BASE_URL at the backend
 npm start                 # then press i (iOS) or a (Android)
 ```
 
-The app ships with `EXPO_PUBLIC_USE_MOCKS=true`, so every flow (VIN lookup, plate
-lookup, basic result, premium report) works end-to-end against in-app mock data
-before the backend exists. Flip it to `false` to hit the real Laravel backend.
+All data comes from the Laravel backend (`../vehify-web`) — start it with
+`php artisan serve --host=0.0.0.0`. Its provider layer serves mock data until
+real vehicle-data providers are wired, so every flow (VIN lookup, plate lookup,
+basic result, Buyer's Analysis, Complete History) works end-to-end today. There
+is no in-app mock mode.
 
 ## Scripts
 
@@ -30,12 +32,14 @@ before the backend exists. Flip it to `false` to hit the real Laravel backend.
 | `npm run lint` / `npm run lint:fix` | ESLint |
 | `npm run format` | Prettier |
 
-## What's built (Phase 1–3 + mock premium)
+## What's built (Phase 1–3 + mock purchases)
 
 - 3-tab navigation with a prominent center **SCAN** button (History / SCAN / Account).
 - Manual VIN + plate entry with validation (17-char VIN, state-required plate).
-- Cache-aware plate → **confirmation** → free **basic result** → premium **upsell** flow.
-- Mock premium report with **AI Buy Score** (score + reason).
+- Cache-aware plate → **confirmation** → free **basic result** → tiered **upsell** flow.
+- Report tiers v2 (`src/config/pricing.ts`): free VIN → plate $0.25 (credited) →
+  **Buyer's Analysis** $2.99 (**AI Buy Score**, market value, suggested offer) →
+  **Complete Vehicle History** +$5 upgrade (accidents, title, theft, odometer, owners).
 - Local, login-free history persisted on-device (AsyncStorage).
 - RTK Query API layer with a mock/real switch; analytics event wrapper.
 
