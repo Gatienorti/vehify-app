@@ -421,7 +421,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           ) : null}
           {analysis.valueLow && analysis.valueHigh ? (
             <StatRow
-              label="Typical range"
+              label="Estimated range"
               value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
             />
           ) : null}
@@ -437,9 +437,15 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         </Section>
         )}
 
-        {/* How mileage moves the price — negotiation ammo, no chart library. */}
+        {/* How mileage moves the price — negotiation ammo, no chart library.
+            This is a projection from the single market estimate, NOT observed
+            per-mile sale data, so it's labelled as an estimate up front. */}
         {curve.length ? (
           <Section title="Value vs. mileage" icon={TrendingDown}>
+            <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
+              Estimated — projected from the current market value to show how
+              mileage typically moves the price. Not per-mile sale data.
+            </Text>
             {curve.map((p, i) => (
               <View key={p.mileage} style={styles.curveRow}>
                 <Text

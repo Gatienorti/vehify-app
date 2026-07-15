@@ -40,10 +40,6 @@ const fullReport: ReportResponse = {
     estimatedValue: 17800,
     valueLow: 16376,
     valueHigh: 19224,
-    // Always null — no real MSRP/depreciation source exists (kept in the
-    // contract for a future trim-MSRP provider, never fabricated).
-    msrp: null,
-    depreciationPct: null,
     suggestedOffer: 16020,
     buyerMileage: 78200,
     valueByMileage: [

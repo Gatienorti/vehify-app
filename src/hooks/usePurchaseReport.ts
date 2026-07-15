@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useAppDispatch } from '../store/hooks';
 import { markPurchased } from '../store/historySlice';
 import { recordPurchase } from '../store/purchasesSlice';
@@ -24,6 +24,11 @@ export function usePurchaseReport() {
   const [startPurchase] = useStartPurchaseMutation();
   const [confirmPurchase] = useConfirmPurchaseMutation();
   const [buying, setBuying] = useState(false);
+  // Hold the token from a successful `start` so a confirm-phase failure retries
+  // confirm ONLY — never a second `start`, which under real IAP would be a
+  // second charge. Mirrors ScanScreen's plateTokenRef. Keyed on the exact
+  // purchase inputs; a changed mileage/price re-runs start intentionally.
+  const startTokenRef = useRef<{ key: string; token: string } | null>(null);
 
   const buy = useCallback(
     async (vin: string, tier: PaidTier, opts: BuyOptions = {}): Promise<PurchaseConfirmResponse> => {
@@ -32,23 +37,33 @@ export function usePurchaseReport() {
       if (opts.mileage !== undefined) track('mileage_entered', { vin });
       if (opts.askingPrice !== undefined) track('asking_price_entered', { vin });
       setBuying(true);
+      const attemptKey = `${vin}|${tier}|${opts.mileage ?? ''}|${opts.askingPrice ?? ''}`;
       try {
         // TODO: replace with RevenueCat purchase flow; this mocks the store round-trip.
-        const start = await startPurchase({
-          vin,
-          tier,
-          productId: PRODUCT_IDS[tier],
-          ...(opts.mileage !== undefined ? { mileage: opts.mileage } : {}),
-          ...(opts.askingPrice !== undefined ? { askingPrice: opts.askingPrice } : {}),
-        }).unwrap();
+        let purchaseToken = startTokenRef.current?.key === attemptKey ? startTokenRef.current.token : null;
+        if (!purchaseToken) {
+          const start = await startPurchase({
+            vin,
+            tier,
+            productId: PRODUCT_IDS[tier],
+            ...(opts.mileage !== undefined ? { mileage: opts.mileage } : {}),
+            ...(opts.askingPrice !== undefined ? { askingPrice: opts.askingPrice } : {}),
+          }).unwrap();
+          purchaseToken = start.purchaseToken;
+          // Charged (or will be) — remember the token before the confirm hop so
+          // a confirm failure can resume without re-charging.
+          startTokenRef.current = { key: attemptKey, token: purchaseToken };
+        }
         const confirm = await confirmPurchase({
-          purchaseToken: start.purchaseToken,
+          purchaseToken,
           // Unique per purchase — the backend has a unique index on
           // transaction ids (double-mint guard).
-          appStoreTransactionId: `mock-txn-${start.purchaseToken}`,
+          appStoreTransactionId: `mock-txn-${purchaseToken}`,
           platform: 'ios',
           tier,
         }).unwrap();
+        // Fully settled — clear so the next purchase starts fresh.
+        startTokenRef.current = null;
         // Trust the server's tier on the confirm — it is the billing record.
         dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId }));
         dispatch(

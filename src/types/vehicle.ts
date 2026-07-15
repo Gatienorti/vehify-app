@@ -107,7 +107,8 @@ export interface ServiceRecord {
 /**
  * Buyer's Analysis — "should I buy this vehicle?" (Report Tiers v2, tier 3).
  * Included with both paid tiers. Field list mirrors the tiers PDF: score,
- * recommendation, value/MSRP/depreciation, offer + negotiation, mileage +
+ * recommendation, market value (a single point estimate — no MSRP/depreciation
+ * source exists, so we never claim them), offer + negotiation, mileage +
  * rollback, maintenance outlook, factory equipment, photos, recalls, TSBs,
  * complaint trends.
  */
@@ -144,15 +145,17 @@ export interface BuyersAnalysis {
     }[];
   } | null;
   recommendation: string;
-  /** Market value — a paid provider call, included with every analysis. */
+  /** Market value — a paid provider call, a single point estimate. */
   estimatedValue?: number | null;
-  /** Typical market range around the estimate. */
+  /**
+   * Estimated uncertainty band around the point estimate (±%). NOT a set of
+   * observed comps — it's modeled from `estimatedValue`, so the UI must label
+   * it as an estimate, never as sourced market data.
+   */
   valueLow?: number | null;
   valueHigh?: number | null;
-  /** Original MSRP, for depreciation context. */
-  msrp?: number | null;
-  /** Percent of MSRP lost since new (0–100). */
-  depreciationPct?: number | null;
+  /* No msrp/depreciation: CarAPI valuation is a single number and no real
+     MSRP/depreciation source is wired — never fabricate a checkable claim. */
   /** AI-suggested offer to make. */
   suggestedOffer?: number | null;
   negotiationAdvice?: string | null;
