@@ -13,6 +13,7 @@ import { useTheme } from '../theme';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { addEntry, markPurchased } from '../store/historySlice';
 import { setThemePreference } from '../store/settingsSlice';
+import { useAccount } from '../hooks/useAccount';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -40,6 +41,22 @@ function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; 
 export default function AccountScreen(_props: Props) {
   const { colors, spacing, isDark } = useTheme();
   const dispatch = useAppDispatch();
+  const { user, isAuthenticated, signIn, signOut, busy } = useAccount();
+
+  // Real Apple/Google SDK sign-in ships next — until then the buttons are an
+  // honest placeholder. In dev, a blue text link runs the full flow against
+  // the backend's mock verifier so the account plumbing is testable now.
+  const comingSoon = () => {
+    track('account_prompt_viewed', { source: 'account_tab' });
+    Alert.alert('Coming soon', 'Sign in with Apple and Google is on the way.');
+  };
+  const devSignIn = () => {
+    void signIn({
+      provider: 'apple',
+      identityToken: JSON.stringify({ sub: 'dev-apple-1', email: 'dev@vehify.app', name: 'Dev Tester' }),
+      name: 'Dev Tester',
+    });
+  };
 
   // Device-local setting (AsyncStorage via the settings slice) — never synced
   // to the backend. The toggle reflects the effective theme (OS or override).
@@ -92,24 +109,49 @@ export default function AccountScreen(_props: Props) {
         <Text style={[styles.header, { color: colors.text }]}>Account</Text>
 
         {/* Optional account — only offered AFTER value is delivered (spec §15). */}
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Protect your reports</Text>
-          <Text style={[styles.cardBody, { color: colors.textMuted }]}>
-            Your {entryCount} lookup{entryCount === 1 ? '' : 's'} are saved only on this device. Create a
-            free account to back them up and access reports anywhere.
-          </Text>
-          <PrimaryButton
-            label="Continue with Apple"
-            onPress={() => track('account_prompt_viewed', { source: 'account_tab' })}
-            style={{ marginTop: spacing.md }}
-          />
-          <PrimaryButton
-            label="Continue with Google"
-            variant="secondary"
-            onPress={() => track('account_prompt_viewed', { source: 'account_tab' })}
-            style={{ marginTop: spacing.sm }}
-          />
-        </View>
+        {isAuthenticated && user ? (
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Signed in</Text>
+            <Text style={[styles.cardBody, { color: colors.text }]}>{user.name}</Text>
+            <Text style={[styles.cardBody, { color: colors.textMuted }]}>{user.email}</Text>
+            <Text style={[styles.cardBody, { color: colors.textMuted, marginTop: spacing.sm }]}>
+              Your reports are backed up to this account and available on any device you sign in on.
+            </Text>
+            <PrimaryButton
+              label="Log out"
+              variant="secondary"
+              loading={busy}
+              onPress={() => void signOut()}
+              style={{ marginTop: spacing.md }}
+            />
+          </View>
+        ) : (
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Protect your reports</Text>
+            <Text style={[styles.cardBody, { color: colors.textMuted }]}>
+              Your {entryCount} lookup{entryCount === 1 ? '' : 's'} are saved only on this device. Create a
+              free account to back them up and access reports anywhere.
+            </Text>
+            <PrimaryButton
+              label="Continue with Apple"
+              onPress={comingSoon}
+              style={{ marginTop: spacing.md }}
+            />
+            <PrimaryButton
+              label="Continue with Google"
+              variant="secondary"
+              onPress={comingSoon}
+              style={{ marginTop: spacing.sm }}
+            />
+            {__DEV__ ? (
+              <Pressable onPress={devSignIn} disabled={busy} hitSlop={8} style={styles.textLinkRow}>
+                <Text style={[styles.textLink, { color: colors.primary }]}>
+                  {busy ? 'Signing in…' : 'Dev sign-in (mock)'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
 
         <View style={{ gap: 0 }}>
           <View style={[styles.row, { borderColor: colors.border }]}>
@@ -155,6 +197,8 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 16, padding: 16 },
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   cardBody: { fontSize: 14, lineHeight: 20 },
+  textLinkRow: { alignItems: 'center', paddingVertical: 12 },
+  textLink: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1 },
   rowLabel: { fontSize: 16 },
 });

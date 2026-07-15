@@ -40,6 +40,8 @@ export type AnalyticsEvent =
   | 'purchases_restored'
   | 'account_prompt_viewed'
   | 'account_created'
+  | 'account_signed_out'
+  | 'history_synced'
   | 'history_viewed'
   | 'theme_changed';
 

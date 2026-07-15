@@ -2,8 +2,12 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { API_BASE_URL } from '../config/env';
 import { getDeviceId } from '../config/deviceId';
 import type { PaidTier } from '../types/vehicle';
+import type { RootState } from '../store';
 import type {
   BasicVehicleResponse,
+  HistorySyncRequest,
+  HistorySyncResponse,
+  LogoutResponse,
   PlateLookupRequest,
   PlateLookupResponse,
   PlatePurchaseConfirmRequest,
@@ -16,6 +20,8 @@ import type {
   PurchaseStartRequest,
   PurchaseStartResponse,
   ReportResponse,
+  SocialSignInRequest,
+  SocialSignInResponse,
   VinLookupRequest,
   VinLookupResponse,
 } from '../types/api';
@@ -32,8 +38,12 @@ export const api = createApi({
     baseUrl: `${API_BASE_URL}/api`,
     // Anonymous device identity on every call — lets the backend keep history
     // and purchases for this phone before login (claimed at /history/sync).
-    prepareHeaders: async (headers) => {
+    prepareHeaders: async (headers, { getState }) => {
       headers.set('X-Device-Id', await getDeviceId());
+      // Attach the account token when signed in — account endpoints
+      // (/user, /history/sync, /auth/logout) require it; anonymous calls omit it.
+      const token = (getState() as RootState).auth.token;
+      if (token) headers.set('Authorization', `Bearer ${token}`);
       return headers;
     },
   }),
@@ -87,6 +97,24 @@ export const api = createApi({
       query: (arg) => ({ url: `/report/${arg.id}/refresh`, method: 'POST' }),
       invalidatesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),
+
+    // --- Account (optional — the app works fully anonymously) ---
+
+    // Sign in with Apple / Google. The native SDK yields an identity token;
+    // the backend verifies it and returns a Sanctum bearer token + user.
+    socialSignIn: builder.mutation<SocialSignInResponse, SocialSignInRequest>({
+      query: (body) => ({ url: '/auth/social', method: 'POST', body }),
+    }),
+
+    // Revoke the current device's token server-side (other devices stay in).
+    logout: builder.mutation<LogoutResponse, void>({
+      query: () => ({ url: '/auth/logout', method: 'POST' }),
+    }),
+
+    // Claim anonymous device activity onto the account + copy local history up.
+    syncHistory: builder.mutation<HistorySyncResponse, HistorySyncRequest>({
+      query: (body) => ({ url: '/history/sync', method: 'POST', body }),
+    }),
   }),
 });
 
@@ -101,4 +129,7 @@ export const {
   useConfirmPurchaseMutation,
   useGetReportQuery,
   useRefreshReportMutation,
+  useSocialSignInMutation,
+  useLogoutMutation,
+  useSyncHistoryMutation,
 } = api;

@@ -106,3 +106,31 @@ export interface SocialSignInResponse {
   token: string;
   user: { id: number; name: string; email: string };
 }
+
+/**
+ * POST /history/sync — claim anonymous device activity onto the account and
+ * copy the local history up. `deviceId` is also sent as X-Device-Id; the
+ * backend accepts either. Items are snake_case to match the backend contract.
+ */
+export interface HistorySyncItem {
+  lookup_type: 'vin' | 'plate';
+  vin?: string;
+  plate?: string;
+  state?: string;
+  looked_up_at: string;
+}
+
+export interface HistorySyncRequest {
+  deviceId?: string;
+  items: HistorySyncItem[];
+}
+
+export interface HistorySyncResponse {
+  synced: number;
+  claimed: number;
+  total: number;
+}
+
+export interface LogoutResponse {
+  message?: string;
+}

@@ -10,6 +10,7 @@ import { RootNavigator } from './src/navigation/AppNavigator';
 import { hydrateHistory } from './src/features/history/localHistory';
 import { hydratePurchases } from './src/features/purchases/localPurchases';
 import { hydrateSettings } from './src/features/settings/localSettings';
+import { hydrateAuthSession } from './src/features/auth/localAuth';
 import { track } from './src/config/analytics';
 
 /** Follows the effective theme — including the user's dark-mode override. */
@@ -23,6 +24,7 @@ export default function App() {
     void hydrateHistory(store.dispatch);
     void hydratePurchases(store.dispatch);
     void hydrateSettings(store.dispatch);
+    void hydrateAuthSession(store.dispatch);
     track('app_opened');
   }, []);
 
