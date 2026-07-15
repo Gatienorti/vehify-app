@@ -80,7 +80,15 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
       }).unwrap();
       navigation.replace('VehicleMatch', { result: res, plate, state });
     } catch {
-      goToVinEntry();
+      // Don't silently teleport to the VIN sheet — say why first.
+      Alert.alert(
+        'Couldn’t refresh',
+        'We couldn’t reach the records service just now. You can check the VIN directly — it’s free and exact.',
+        [
+          { text: 'Enter VIN — free', onPress: goToVinEntry },
+          { text: 'Back', style: 'cancel' },
+        ],
+      );
     }
   };
 

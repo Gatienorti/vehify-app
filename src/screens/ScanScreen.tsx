@@ -433,7 +433,13 @@ export default function ScanScreen({ navigation, route }: Props) {
       <ManualEntrySheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        onSubmitVin={(vin) => { setPendingVin(vin); setSheetOpen(false); }}
+        onSubmitVin={(vin) => {
+          // Claim the detection loop (like onSubmitPlate) so a camera tick
+          // can't fire a competing read before the confirm sheet opens.
+          handledRef.current = true;
+          setPendingVin(vin);
+          setSheetOpen(false);
+        }}
         onSubmitPlate={onSubmitPlate}
         submitting={submitting}
       />

@@ -18,6 +18,8 @@ type Mode = 'vin' | 'plate';
 
 interface Props {
   visible: boolean;
+  /** Which tab to open on. Defaults to VIN (the free, exact path). */
+  initialMode?: Mode;
   onClose: () => void;
   onSubmitVin: (vin: string) => void;
   onSubmitPlate: (plate: string, state: string) => void;
@@ -26,18 +28,35 @@ interface Props {
 
 export default function ManualEntrySheet({
   visible,
+  initialMode = 'vin',
   onClose,
   onSubmitVin,
   onSubmitPlate,
   submitting = false,
 }: Props) {
   const { colors, radius, spacing } = useTheme();
-  const [mode, setMode] = useState<Mode>('vin');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [vin, setVin] = useState('');
   const [plate, setPlate] = useState('');
   const [state, setState] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [statePickerOpen, setStatePickerOpen] = useState(false);
+
+  // Clear every field and return to the intended tab each time the sheet
+  // opens — otherwise a previous (wrong) VIN/plate/state and the last-used tab
+  // persist into the next open (render-time reset, no stale-value flash).
+  const [prevVisible, setPrevVisible] = useState(false);
+  if (visible !== prevVisible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setMode(initialMode);
+      setVin('');
+      setPlate('');
+      setState('');
+      setError(undefined);
+      setStatePickerOpen(false);
+    }
+  }
 
   const reset = () => {
     setError(undefined);

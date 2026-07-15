@@ -625,12 +625,15 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {/* NHTSA crash-test ratings for this model, when on file. */}
         {analysis.safety ? (
           <Section title="Crash safety (NHTSA)" icon={Star}>
-            <StatRow
-              label="Overall rating"
-              value={`${'★'.repeat(Math.max(0, Math.min(5, analysis.safety.overall)))}${'☆'.repeat(
-                Math.max(0, 5 - Math.max(0, Math.min(5, analysis.safety.overall))),
-              )}  ${analysis.safety.overall}/5`}
-            />
+            {(() => {
+              const overall = Math.max(0, Math.min(5, analysis.safety.overall));
+              return (
+                <StatRow
+                  label="Overall rating"
+                  value={`${'★'.repeat(overall)}${'☆'.repeat(5 - overall)}  ${overall}/5`}
+                />
+              );
+            })()}
             {analysis.safety.front_crash ? (
               <StatRow label="Front crash" value={`${analysis.safety.front_crash}/5`} />
             ) : null}
