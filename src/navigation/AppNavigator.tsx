@@ -43,6 +43,9 @@ export function RootNavigator() {
         headerTintColor: colors.text,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },
+        // Chevron only — otherwise iOS labels the back button with the
+        // previous route's name (users saw a literal "Tabs" button).
+        headerBackButtonDisplayMode: 'minimal',
       }}
     >
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />

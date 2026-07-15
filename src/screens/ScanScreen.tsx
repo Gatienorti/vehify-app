@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -17,8 +17,14 @@ import ScanConfirmSheet from '../components/ScanConfirmSheet';
 import VinConfirmSheet from '../components/VinConfirmSheet';
 import ScannerFrame from '../components/ScannerFrame';
 import { track } from '../config/analytics';
-import { useLookupPlateMutation, useLookupVinMutation } from '../services/api';
+import { PLATE_PRODUCT_ID } from '../config/pricing';
+import {
+  useConfirmPlatePurchaseMutation,
+  useLookupVinMutation,
+  useStartPlatePurchaseMutation,
+} from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
+import { useAppSelector } from '../store/hooks';
 import { extractVinFromBarcode } from '../utils/vin';
 import { readPlateOnce } from '../ml/plateProcessor';
 import { voteOnReads, isAcceptableVote } from '../ml/vote';
@@ -57,9 +63,20 @@ export default function ScanScreen({ navigation, route }: Props) {
   const [torch, setTorch] = useState(false);
 
   const [lookupVin, vinState] = useLookupVinMutation();
-  const [lookupPlate, plateState] = useLookupPlateMutation();
+  const [startPlatePurchase, plateStartState] = useStartPlatePurchaseMutation();
+  const [confirmPlatePurchase, plateConfirmState] = useConfirmPlatePurchaseMutation();
   const recordLookup = useRecordLookup();
-  const submitting = vinState.isLoading || plateState.isLoading;
+  // Owned reports, readable inside stable callbacks without re-creating them.
+  const purchases = useAppSelector((s) => s.purchases.records);
+  const purchasesRef = useRef(purchases);
+  useEffect(() => {
+    purchasesRef.current = purchases;
+  }, [purchases]);
+  const submitting =
+    vinState.isLoading || plateStartState.isLoading || plateConfirmState.isLoading;
+  // A confirm-phase failure keeps the started purchase token so retrying the
+  // same plate re-runs ONLY the confirm — never minting a second $0.25 charge.
+  const plateTokenRef = useRef<{ key: string; token: string } | null>(null);
   const submittingRef = useRef(false);
   useEffect(() => { submittingRef.current = submitting; }, [submitting]);
 
@@ -232,7 +249,18 @@ export default function ScanScreen({ navigation, route }: Props) {
         recordLookup(res.vehicle, { lookupType: 'vin' });
         setSheetOpen(false);
         setPendingVin(null);
-        navigation.navigate('BasicResult', { vin: res.vehicle.vin });
+        // Already-owned report → straight to it; the basic page would only
+        // offer "View your report" anyway.
+        const owned = purchasesRef.current.find((p) => p.vin === res.vehicle.vin);
+        if (owned) {
+          navigation.navigate('PremiumReport', {
+            vin: res.vehicle.vin,
+            reportId: owned.reportId,
+            tier: owned.tier,
+          });
+        } else {
+          navigation.navigate('BasicResult', { vin: res.vehicle.vin });
+        }
       } catch {
         setLookupError("Couldn't reach the server. Check your connection and try again.");
       }
@@ -240,23 +268,55 @@ export default function ScanScreen({ navigation, route }: Props) {
     [lookupVin, recordLookup, navigation],
   );
 
-  const doPlateLookup = useCallback(
+  // Paid $0.25 plate lookup (tier 2): start the purchase (mock IAP until
+  // RevenueCat ships), then confirm — the backend runs the plate→VIN lookup
+  // inline and returns the match. Fires ONLY from the confirm sheet's
+  // explicit button, never from camera frames.
+  const doPlatePurchase = useCallback(
     async (plate: string, state: string) => {
-      track('plate_live_lookup_started', { state });
+      track('plate_purchase_started', { state });
       setLookupError(null);
+      const attemptKey = `${plate}|${state}`;
       try {
-        const res = await lookupPlate({ plate, state }).unwrap();
-        track(res.source === 'cache' ? 'plate_cache_hit' : 'plate_cache_miss', { state });
-        track('plate_live_lookup_success', { state });
+        let token = plateTokenRef.current?.key === attemptKey ? plateTokenRef.current.token : null;
+        if (!token) {
+          const start = await startPlatePurchase({
+            plate,
+            state,
+            productId: PLATE_PRODUCT_ID,
+          }).unwrap();
+          token = start.purchaseToken;
+          plateTokenRef.current = { key: attemptKey, token };
+        }
+        const res = await confirmPlatePurchase({
+          purchaseToken: token,
+          platform: 'ios',
+          appStoreTransactionId: `mock-txn-plate-${token}`,
+        }).unwrap();
+        plateTokenRef.current = null;
         setSheetOpen(false);
         setPendingPlate(null);
-        navigation.navigate('VehicleMatch', { result: res, plate, state });
+        if (res.found) {
+          track(res.source === 'cache' ? 'plate_cache_hit' : 'plate_cache_miss', { state });
+          track('plate_purchase_completed', { state, source: res.source });
+          navigation.navigate('VehicleMatch', { result: res, plate, state });
+        } else {
+          track('plate_purchase_no_hit', { state });
+          Alert.alert(
+            'No vehicle found for this plate',
+            'We searched but no match came back for this plate. Enter the VIN instead — VIN lookups are free and exact.',
+            [
+              { text: 'Enter VIN', onPress: () => setSheetOpen(true) },
+              { text: 'Back', style: 'cancel' },
+            ],
+          );
+        }
       } catch {
-        track('plate_live_lookup_failed', { state });
-        setLookupError("The lookup didn't go through — you weren't charged. Check your connection and try again.");
+        track('plate_purchase_failed', { state });
+        setLookupError("The lookup didn't go through. Check your connection and try again.");
       }
     },
-    [lookupPlate, navigation],
+    [startPlatePurchase, confirmPlatePurchase, navigation],
   );
 
   // Manual plate entry → same editable confirm sheet
@@ -387,7 +447,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         onCancel={resetPending}
         onConfirm={(plate, state) => {
           track('scan_confirmed');
-          void doPlateLookup(plate, state);
+          void doPlatePurchase(plate, state);
         }}
       />
 
@@ -427,7 +487,9 @@ const styles = StyleSheet.create({
     textShadowRadius: 6,
   },
   hintHidden: { opacity: 0 },
-  actions: { gap: 12, paddingBottom: 80 },
+  // 20 (safe) + 36 = 56pt from the screen edge — narrower than the floating
+  // tab bar so the scan controls read as a compact centered column.
+  actions: { gap: 12, paddingBottom: 80, paddingHorizontal: 36 },
   typeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   typeText: { color: '#AEB8CC', fontSize: 15, fontWeight: '600' },
   // Mirrors PrimaryButton's metrics exactly (padding 12/16, radius 12, 16pt

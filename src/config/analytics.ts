@@ -21,9 +21,12 @@ export type AnalyticsEvent =
   | 'manual_vin_entered'
   | 'plate_cache_hit'
   | 'plate_cache_miss'
-  | 'plate_live_lookup_started'
-  | 'plate_live_lookup_success'
-  | 'plate_live_lookup_failed'
+  | 'plate_purchase_started'
+  | 'plate_purchase_completed'
+  | 'plate_purchase_failed'
+  | 'plate_purchase_no_hit'
+  | 'mileage_entered'
+  | 'asking_price_entered'
   | 'vehicle_match_viewed'
   | 'vehicle_confirmed'
   | 'vehicle_rejected'
@@ -37,7 +40,8 @@ export type AnalyticsEvent =
   | 'purchases_restored'
   | 'account_prompt_viewed'
   | 'account_created'
-  | 'history_viewed';
+  | 'history_viewed'
+  | 'theme_changed';
 
 type Props = Record<string, string | number | boolean | undefined>;
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { useColorScheme } from 'react-native';
+import { useAppSelector } from '../store/hooks';
 import { darkColors, lightColors, radius, spacing, type ThemeColors } from './colors';
 
 export interface Theme {
@@ -12,8 +12,11 @@ export interface Theme {
 const ThemeContext = createContext<Theme | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  // Device-local preference (Account → Dark mode toggle), cached on the phone
+  // only. Defaults to LIGHT until the user flips the toggle — the app never
+  // follows the OS scheme.
+  const preference = useAppSelector((s) => s.settings.themePreference);
+  const isDark = preference === 'dark';
   const value = useMemo<Theme>(
     () => ({ colors: isDark ? darkColors : lightColors, isDark, spacing, radius }),
     [isDark],

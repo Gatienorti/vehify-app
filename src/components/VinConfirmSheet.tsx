@@ -10,7 +10,16 @@ import {
 import { Pencil } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import PrimaryButton from './PrimaryButton';
+import LoadingOverlay from './LoadingOverlay';
 import { normalizeVin, validateVin } from '../utils/vin';
+
+const DECODE_MESSAGES = [
+  'Decoding the VIN with the federal database…',
+  '17 characters, zero guesswork…',
+  'Checking what the factory says this car is…',
+  'VINs never lie. Plates sometimes do…',
+  'One moment — verifying, not guessing.',
+];
 
 interface Props {
   visible: boolean;
@@ -99,6 +108,8 @@ export default function VinConfirmSheet({
           <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel &amp; keep scanning</Text>
         </Pressable>
       </View>
+
+      <LoadingOverlay visible={submitting} title="Decoding this VIN…" messages={DECODE_MESSAGES} />
     </Modal>
   );
 }

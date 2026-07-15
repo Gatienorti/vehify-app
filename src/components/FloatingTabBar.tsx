@@ -81,7 +81,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   );
 }
 
-const BAR_HEIGHT = 74;
+const BAR_HEIGHT = 70;
 const SCAN_SIZE = 70;
 
 const styles = StyleSheet.create({
@@ -91,7 +91,9 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
-    paddingHorizontal: 16,
+    // Generous side inset so the bar reads as a floating pill, not a
+    // full-width slab — with 3 items it doesn't need the whole width.
+    paddingHorizontal: 28,
   },
   bar: {
     flexDirection: 'row',
@@ -99,8 +101,10 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     height: BAR_HEIGHT,
     backgroundColor: BAR_BG,
-    borderRadius: 24,
-    paddingHorizontal: 8,
+    // Soft rounded rect — a full half-height pill reads too capsule-like
+    // next to the circular scan button.
+    borderRadius: 22,
+    paddingHorizontal: 10,
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 16,

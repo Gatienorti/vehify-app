@@ -3,8 +3,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 import type { BuyScore } from '../types/vehicle';
 
-/** AI Buy Score — always rendered WITH its reason (spec §13). */
-export default function ScoreBadge({ score }: { score: BuyScore }) {
+/** A 0–100 score card — always rendered WITH its reason (spec §13). */
+export default function ScoreBadge({
+  score,
+  label = 'AI Buy Score',
+}: {
+  score: BuyScore;
+  label?: string;
+}) {
   const { colors, radius, spacing } = useTheme();
   const color =
     score.band === 'green'
@@ -17,10 +23,23 @@ export default function ScoreBadge({ score }: { score: BuyScore }) {
     <View style={[styles.wrap, { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, borderColor: colors.border }]}>
       <View style={styles.row}>
         <View style={[styles.dot, { backgroundColor: color }]} />
-        <Text style={[styles.label, { color: colors.textMuted }]}>AI Buy Score</Text>
+        <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
       </View>
       <Text style={[styles.score, { color }]}>{score.score}<Text style={[styles.outOf, { color: colors.textMuted }]}>/100</Text></Text>
-      <Text style={[styles.reason, { color: colors.text }]}>{score.reason}</Text>
+      {/* Multi-line reasons (one finding per line) render as a bullet list;
+          a single-line reason stays plain prose. */}
+      {(() => {
+        const lines = score.reason.split('\n').filter((l) => l.trim() !== '');
+        if (lines.length <= 1) {
+          return <Text style={[styles.reason, { color: colors.text }]}>{score.reason}</Text>;
+        }
+        return lines.map((line) => (
+          <Text key={line} style={[styles.reason, { color: colors.text }]}>
+            {'•  '}
+            {line}
+          </Text>
+        ));
+      })()}
     </View>
   );
 }

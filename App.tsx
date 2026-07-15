@@ -5,16 +5,24 @@ import { NavigationContainer } from '@react-navigation/native';
 import { Provider } from 'react-redux';
 import { StatusBar } from 'expo-status-bar';
 import { store } from './src/store';
-import { ThemeProvider } from './src/theme';
+import { ThemeProvider, useTheme } from './src/theme';
 import { RootNavigator } from './src/navigation/AppNavigator';
 import { hydrateHistory } from './src/features/history/localHistory';
 import { hydratePurchases } from './src/features/purchases/localPurchases';
+import { hydrateSettings } from './src/features/settings/localSettings';
 import { track } from './src/config/analytics';
+
+/** Follows the effective theme — including the user's dark-mode override. */
+function ThemedStatusBar() {
+  const { isDark } = useTheme();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
 
 export default function App() {
   useEffect(() => {
     void hydrateHistory(store.dispatch);
     void hydratePurchases(store.dispatch);
+    void hydrateSettings(store.dispatch);
     track('app_opened');
   }, []);
 
@@ -25,7 +33,7 @@ export default function App() {
           <ThemeProvider>
             <NavigationContainer>
               <RootNavigator />
-              <StatusBar style="auto" />
+              <ThemedStatusBar />
             </NavigationContainer>
           </ThemeProvider>
         </SafeAreaProvider>

@@ -60,7 +60,10 @@ export default function HistoryScreen({ navigation }: Props) {
             >
               <Badge tier={item.tier} />
               <Text style={[styles.rowTitle, { color: colors.text }]}>{title(item)}</Text>
-              <Text style={[styles.rowMeta, { color: colors.textMuted }]}>{when(item.lookedUpAt)}</Text>
+              <Text style={[styles.rowMeta, { color: colors.textMuted }]}>
+                {when(item.lookedUpAt)}
+                {item.plate ? `  ·  ${item.plate}${item.state ? ` (${item.state})` : ''}` : ''}
+              </Text>
             </Pressable>
           )}
         />

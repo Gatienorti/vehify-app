@@ -1,23 +1,30 @@
 import React from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronRight,
   FileText,
   HelpCircle,
+  Moon,
   RefreshCw,
-  Settings,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { addEntry, markPurchased } from '../store/historySlice';
+import { setThemePreference } from '../store/settingsSlice';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
 import type { TabScreenProps } from '../types/navigation';
 
 type Props = TabScreenProps<'Account'>;
+
+const PRIVACY_URL = 'https://vehify.app/privacy';
+// Placeholder support channel until a real contact form/page exists.
+const SUPPORT_EMAIL = 'gatien.orti@gmail.com';
+// Hidden until real IAP (RevenueCat) ships — spec §16 requires it at launch.
+const SHOW_RESTORE_PURCHASES = false as boolean;
 
 function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress?: () => void }) {
   const { colors } = useTheme();
@@ -31,8 +38,15 @@ function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; 
 }
 
 export default function AccountScreen(_props: Props) {
-  const { colors, spacing } = useTheme();
+  const { colors, spacing, isDark } = useTheme();
   const dispatch = useAppDispatch();
+
+  // Device-local setting (AsyncStorage via the settings slice) — never synced
+  // to the backend. The toggle reflects the effective theme (OS or override).
+  const toggleDarkMode = (dark: boolean) => {
+    dispatch(setThemePreference(dark ? 'dark' : 'light'));
+    track('theme_changed', { mode: dark ? 'dark' : 'light' });
+  };
   const entryCount = useAppSelector((s) => s.history.entries.length);
   const historyEntries = useAppSelector((s) => s.history.entries);
   const purchases = useAppSelector((s) => s.purchases.records);
@@ -98,10 +112,37 @@ export default function AccountScreen(_props: Props) {
         </View>
 
         <View style={{ gap: 0 }}>
-          <Row icon={RefreshCw} label="Restore purchases" onPress={restorePurchases} />
-          <Row icon={Settings} label="Settings" />
-          <Row icon={HelpCircle} label="Support" />
-          <Row icon={FileText} label="Legal & privacy" />
+          <View style={[styles.row, { borderColor: colors.border }]}>
+            <Moon size={21} color={colors.textMuted} strokeWidth={2.25} />
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Dark mode</Text>
+            <Switch
+              value={isDark}
+              onValueChange={toggleDarkMode}
+              thumbColor={colors.primary}
+              trackColor={{ false: colors.surfaceAlt, true: colors.surfaceAlt }}
+              ios_backgroundColor={colors.surfaceAlt}
+              style={{ marginLeft: 'auto' }}
+            />
+          </View>
+          {SHOW_RESTORE_PURCHASES ? (
+            <Row icon={RefreshCw} label="Restore purchases" onPress={restorePurchases} />
+          ) : null}
+          <Row
+            icon={HelpCircle}
+            label="Support"
+            onPress={() => {
+              Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Vehify support`).catch(() =>
+                Alert.alert('Support', `Email us at ${SUPPORT_EMAIL}`),
+              );
+            }}
+          />
+          <Row
+            icon={FileText}
+            label="Legal & privacy"
+            onPress={() => {
+              Linking.openURL(PRIVACY_URL).catch(() => {});
+            }}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>

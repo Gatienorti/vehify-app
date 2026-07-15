@@ -28,7 +28,7 @@ export default function Badge({ tier }: { tier: ReportTier }) {
           { color: isPaid ? colors.onPrimary : colors.textMuted },
         ]}
       >
-        {LABELS[tier]}
+        {LABELS[tier] ?? 'REPORT'}
       </Text>
     </View>
   );

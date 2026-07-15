@@ -7,6 +7,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import { track } from '../config/analytics';
 import { useRefreshPlateMutation } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
+import { useAppSelector } from '../store/hooks';
 import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'VehicleMatch'>;
@@ -18,6 +19,11 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
   const [refreshPlate, { isLoading }] = useRefreshPlateMutation();
   const recordLookup = useRecordLookup();
   const fromCache = result.source === 'cache';
+  // Already-owned report for this VIN → confirming the match goes straight
+  // to the report; the basic page would only offer "View your report" anyway.
+  const owned = useAppSelector((s) =>
+    s.purchases.records.find((p) => p.vin === result.vehicle.vin),
+  );
 
   useEffect(() => {
     track('vehicle_match_viewed', { source: result.source });
@@ -27,8 +33,18 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
     track('vehicle_confirmed');
     recordLookup(result.vehicle, {
       lookupType: 'plate',
+      plate,
+      state,
     });
-    navigation.replace('BasicResult', { vin: result.vehicle.vin });
+    if (owned) {
+      navigation.replace('PremiumReport', {
+        vin: result.vehicle.vin,
+        reportId: owned.reportId,
+        tier: owned.tier,
+      });
+    } else {
+      navigation.replace('BasicResult', { vin: result.vehicle.vin });
+    }
   };
 
   // Rejected match → straight to manual VIN entry on the Scan tab, never a

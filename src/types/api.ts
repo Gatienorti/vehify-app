@@ -31,10 +31,41 @@ export interface VinLookupResponse {
 
 export type BasicVehicleResponse = BasicReport;
 
+/** Paid $0.25 plate lookup (tier 2) — two-phase like report purchases. */
+export interface PlatePurchaseStartRequest {
+  plate: string;
+  state: string;
+  productId: string;
+}
+
+export interface PlatePurchaseStartResponse {
+  purchaseToken: string;
+}
+
+export interface PlatePurchaseConfirmRequest {
+  purchaseToken: string;
+  platform: 'ios' | 'android';
+  appStoreTransactionId: string;
+}
+
+/**
+ * Confirm runs the plate→VIN lookup inline. Discriminated on `found`: a hit
+ * carries the full PlateLookupResponse shape (hand it straight to
+ * VehicleMatch); a miss keeps the paid record and steers the user to VIN
+ * entry. Mirrors PlatePurchaseController@confirm in ../vehify-web.
+ */
+export type PlatePurchaseConfirmResponse =
+  | ({ purchaseId: string; found: true } & PlateLookupResponse)
+  | { purchaseId: string; found: false; vehicle: null };
+
 export interface PurchaseStartRequest {
   vin: string;
   tier: PaidTier;
   productId: string;
+  /** Optional buyer-entered odometer reading (miles) — the buyer is at the car. */
+  mileage?: number;
+  /** Optional seller's asking price (dollars) — powers the Deal verdict. */
+  askingPrice?: number;
 }
 
 export interface PurchaseStartResponse {
@@ -53,4 +84,25 @@ export interface PurchaseConfirmResponse {
   tier: PaidTier;
 }
 
-export type ReportResponse = Report & { id: string };
+export type ReportResponse = Report & {
+  id: string;
+  /** When the content was last (re)generated — drives the stale-report banner. */
+  generatedAt?: string | null;
+};
+
+/**
+ * Sign in with Apple / Google → Sanctum bearer token. `identityToken` is the
+ * JWT from the native sign-in sheet. Send `name` when Apple provides it —
+ * that only happens on the very first authorization.
+ */
+export interface SocialSignInRequest {
+  provider: 'apple' | 'google';
+  identityToken: string;
+  name?: string;
+}
+
+export interface SocialSignInResponse {
+  /** Use as `Authorization: Bearer <token>` on account endpoints. */
+  token: string;
+  user: { id: number; name: string; email: string };
+}

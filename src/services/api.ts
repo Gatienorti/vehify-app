@@ -6,6 +6,10 @@ import type {
   BasicVehicleResponse,
   PlateLookupRequest,
   PlateLookupResponse,
+  PlatePurchaseConfirmRequest,
+  PlatePurchaseConfirmResponse,
+  PlatePurchaseStartRequest,
+  PlatePurchaseStartResponse,
   PlateRefreshRequest,
   PurchaseConfirmRequest,
   PurchaseConfirmResponse,
@@ -47,6 +51,17 @@ export const api = createApi({
       query: (body) => ({ url: '/lookup/plate/refresh', method: 'POST', body }),
     }),
 
+    // Paid $0.25 plate lookup (tier 2). Two-phase mock IAP like reports;
+    // confirm runs the plate→VIN lookup inline and returns the match (or
+    // found:false on a no-hit — the paid record is kept server-side).
+    startPlatePurchase: builder.mutation<PlatePurchaseStartResponse, PlatePurchaseStartRequest>({
+      query: (body) => ({ url: '/plate/purchase/start', method: 'POST', body }),
+    }),
+
+    confirmPlatePurchase: builder.mutation<PlatePurchaseConfirmResponse, PlatePurchaseConfirmRequest>({
+      query: (body) => ({ url: '/plate/purchase/confirm', method: 'POST', body }),
+    }),
+
     getVehicleBasic: builder.query<BasicVehicleResponse, string>({
       query: (vin) => `/vehicle/${vin}/basic`,
       providesTags: (_r, _e, vin) => [{ type: 'VehicleBasic', id: vin }],
@@ -65,6 +80,13 @@ export const api = createApi({
       query: (arg) => `/report/${arg.id}`,
       providesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),
+
+    // Regenerate a stale report's content (offered via the "X days old"
+    // banner). Free while providers are mock/free.
+    refreshReport: builder.mutation<ReportResponse, { id: string }>({
+      query: (arg) => ({ url: `/report/${arg.id}/refresh`, method: 'POST' }),
+      invalidatesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
+    }),
   }),
 });
 
@@ -72,8 +94,11 @@ export const {
   useLookupVinMutation,
   useLookupPlateMutation,
   useRefreshPlateMutation,
+  useStartPlatePurchaseMutation,
+  useConfirmPlatePurchaseMutation,
   useGetVehicleBasicQuery,
   useStartPurchaseMutation,
   useConfirmPurchaseMutation,
   useGetReportQuery,
+  useRefreshReportMutation,
 } = api;
