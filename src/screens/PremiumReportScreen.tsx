@@ -223,7 +223,7 @@ function dedupeConditionFlags(
 export default function PremiumReportScreen({ navigation, route }: Props) {
   const { colors, spacing } = useTheme();
   const { vin, reportId, tier } = route.params;
-  const { data, isLoading, isError, refetch } = useGetReportQuery(
+  const { data, isLoading, isError, error, refetch } = useGetReportQuery(
     { id: reportId ?? `report-${vin}`, vin, tier },
   );
   const [refreshReport, { isLoading: refreshing }] = useRefreshReportMutation();
@@ -239,13 +239,29 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
   }, [navigation, tier]);
 
   if (isError) {
+    // A 404 means the report isn't on the server (e.g. a stale local ownership
+    // pointer to a rebuilt backend) — don't dead-end; send the user to the free
+    // Basic result. Other errors (network) keep the retry path.
+    const notFound = (error as { status?: number } | undefined)?.status === 404;
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
-        <Text style={[styles.errorTitle, { color: colors.text }]}>Couldn&apos;t load your report</Text>
-        <Text style={[styles.errorBody, { color: colors.textMuted }]}>
-          Your purchase is safe — check your connection and try again.
+        <Text style={[styles.errorTitle, { color: colors.text }]}>
+          {notFound ? 'That report isn’t available' : 'Couldn’t load your report'}
         </Text>
-        <PrimaryButton label="Try again" onPress={() => void refetch()} style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }} />
+        <Text style={[styles.errorBody, { color: colors.textMuted }]}>
+          {notFound
+            ? 'We couldn’t find this report anymore. You can still see the free basic details for this vehicle.'
+            : 'Your purchase is safe — check your connection and try again.'}
+        </Text>
+        {notFound ? (
+          <PrimaryButton
+            label="See basic details"
+            onPress={() => navigation.replace('BasicResult', { vin })}
+            style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }}
+          />
+        ) : (
+          <PrimaryButton label="Try again" onPress={() => void refetch()} style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }} />
+        )}
       </SafeAreaView>
     );
   }

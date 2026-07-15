@@ -5,9 +5,8 @@ import { useTheme } from '../theme';
 import VehicleCard from '../components/VehicleCard';
 import PrimaryButton from '../components/PrimaryButton';
 import { track } from '../config/analytics';
-import { useRefreshPlateMutation } from '../services/api';
+import { useGetPurchasesQuery, useRefreshPlateMutation } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
-import { useAppSelector } from '../store/hooks';
 import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'VehicleMatch'>;
@@ -19,11 +18,13 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
   const [refreshPlate, { isLoading }] = useRefreshPlateMutation();
   const recordLookup = useRecordLookup();
   const fromCache = result.source === 'cache';
-  // Already-owned report for this VIN → confirming the match goes straight
-  // to the report; the basic page would only offer "View your report" anyway.
-  const owned = useAppSelector((s) =>
-    s.purchases.records.find((p) => p.vin === result.vehicle.vin),
-  );
+  // Already-owned report for this VIN → confirming the match goes straight to
+  // the report; the basic page would only offer "View your report" anyway.
+  // Ownership comes from the SERVER (source of truth) — never the local cache,
+  // which can point at a report the backend no longer has and strand the user
+  // on the report screen. No server report → we correctly show Basic.
+  const { data: purchases } = useGetPurchasesQuery();
+  const owned = purchases?.find((p) => p.vin === result.vehicle.vin && p.reportId);
 
   useEffect(() => {
     track('vehicle_match_viewed', { source: result.source });

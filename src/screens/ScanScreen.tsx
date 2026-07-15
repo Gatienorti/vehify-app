@@ -20,11 +20,11 @@ import { track } from '../config/analytics';
 import { PLATE_PRODUCT_ID } from '../config/pricing';
 import {
   useConfirmPlatePurchaseMutation,
+  useGetPurchasesQuery,
   useLookupVinMutation,
   useStartPlatePurchaseMutation,
 } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
-import { useAppSelector } from '../store/hooks';
 import { extractVinFromBarcode } from '../utils/vin';
 import { readPlateOnce } from '../ml/plateProcessor';
 import { voteOnReads, isAcceptableVote } from '../ml/vote';
@@ -67,7 +67,9 @@ export default function ScanScreen({ navigation, route }: Props) {
   const [confirmPlatePurchase, plateConfirmState] = useConfirmPlatePurchaseMutation();
   const recordLookup = useRecordLookup();
   // Owned reports, readable inside stable callbacks without re-creating them.
-  const purchases = useAppSelector((s) => s.purchases.records);
+  // Owned reports from the SERVER (source of truth) — never the local cache,
+  // which can point at a report the backend no longer has.
+  const { data: purchases } = useGetPurchasesQuery();
   const purchasesRef = useRef(purchases);
   useEffect(() => {
     purchasesRef.current = purchases;
@@ -251,7 +253,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         setPendingVin(null);
         // Already-owned report → straight to it; the basic page would only
         // offer "View your report" anyway.
-        const owned = purchasesRef.current.find((p) => p.vin === res.vehicle.vin);
+        const owned = purchasesRef.current?.find((p) => p.vin === res.vehicle.vin && p.reportId);
         if (owned) {
           navigation.navigate('PremiumReport', {
             vin: res.vehicle.vin,
