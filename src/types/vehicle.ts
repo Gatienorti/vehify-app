@@ -154,8 +154,14 @@ export interface BuyersAnalysis {
    */
   valueLow?: number | null;
   valueHigh?: number | null;
-  /* No msrp/depreciation: CarAPI valuation is a single number and no real
-     MSRP/depreciation source is wired — never fabricate a checkable claim. */
+  /**
+   * Original MSRP (sticker) for the matched trim — REAL data from the free
+   * carapi.app trims dataset, per-trim, roughly model years 2015–2020; null
+   * outside that coverage. A checkable dollar claim, so only render when present.
+   */
+  msrp?: number | null;
+  /** Percent of MSRP lost since new (0–100), derived from msrp vs estimate. */
+  depreciationPct?: number | null;
   /** AI-suggested offer to make. */
   suggestedOffer?: number | null;
   negotiationAdvice?: string | null;

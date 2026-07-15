@@ -41,6 +41,9 @@ const fullReport: ReportResponse = {
     estimatedValue: 17800,
     valueLow: 16376,
     valueHigh: 19224,
+    // Real MSRP (carapi.app trims, ~2015–2020); null outside that coverage.
+    msrp: 27400,
+    depreciationPct: 35,
     suggestedOffer: 16020,
     buyerMileage: 78200,
     valueByMileage: [

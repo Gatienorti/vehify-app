@@ -441,9 +441,14 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
             />
           ) : null}
-          {/* No MSRP/depreciation rows — no real data source exists for them
-              (CarAPI valuation is a single point value). Never show a
-              fabricated dollar claim. */}
+          {/* Real MSRP (carapi.app trims, ~2015–2020) — shown only when the
+              provider actually has it; hidden otherwise, never fabricated. */}
+          {analysis.msrp ? (
+            <StatRow label="Original MSRP" value={`$${analysis.msrp.toLocaleString()}`} />
+          ) : null}
+          {analysis.depreciationPct != null ? (
+            <StatRow label="Lost since new" value={`~${analysis.depreciationPct}%`} />
+          ) : null}
           {analysis.suggestedOffer ? (
             <StatRow label="Suggested offer" value={`$${analysis.suggestedOffer.toLocaleString()}`} />
           ) : null}
