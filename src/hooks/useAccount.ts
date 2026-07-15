@@ -1,17 +1,29 @@
 import { useCallback, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { clearAuth, setAuth } from '../store/authSlice';
-import { useLogoutMutation, useSocialSignInMutation, useSyncHistoryMutation } from '../services/api';
+import {
+  useLoginEmailMutation,
+  useLogoutMutation,
+  useRegisterEmailMutation,
+  useSocialSignInMutation,
+  useSyncHistoryMutation,
+} from '../services/api';
 import { getDeviceId } from '../config/deviceId';
-import { track } from '../config/analytics';
+import { track, type AnalyticsEvent } from '../config/analytics';
 import type { HistoryEntry } from '../types/history';
-import type { HistorySyncItem, SocialSignInRequest } from '../types/api';
+import type {
+  AuthResponse,
+  EmailLoginRequest,
+  EmailRegisterRequest,
+  HistorySyncItem,
+  SocialSignInRequest,
+} from '../types/api';
 
 /**
- * The one place sign-in / sign-out logic lives. The social buttons (and, later,
- * any other entry) call `signIn`; it stores the session, then best-effort syncs
- * this device's local history onto the new account. Account is always optional —
- * a sync failure never blocks the sign-in.
+ * The one place sign-in / sign-out logic lives. Every entry point (social,
+ * email register, email login) funnels through `complete`, which stores the
+ * session then best-effort syncs this device's local history onto the account.
+ * Account is always optional — a sync failure never blocks the sign-in.
  */
 export function useAccount() {
   const dispatch = useAppDispatch();
@@ -19,51 +31,77 @@ export function useAccount() {
   const isAuthenticated = useAppSelector((s) => !!s.auth.token);
   const localHistory = useAppSelector((s) => s.history.entries);
   const [socialSignIn] = useSocialSignInMutation();
+  const [registerEmail] = useRegisterEmailMutation();
+  const [loginEmail] = useLoginEmailMutation();
   const [logout] = useLogoutMutation();
   const [syncHistory] = useSyncHistoryMutation();
   const [busy, setBusy] = useState(false);
 
-  const signIn = useCallback(
-    async (req: SocialSignInRequest) => {
+  // Shared tail for every successful sign-in path.
+  const complete = useCallback(
+    async (res: AuthResponse, event: AnalyticsEvent) => {
+      dispatch(setAuth({ token: res.token, user: res.user }));
+      track(event);
+      // Claim anonymous device activity + push local history up. The Bearer
+      // token is now in the store, so this call is authenticated. Best-effort.
+      try {
+        const deviceId = await getDeviceId();
+        await syncHistory({ deviceId, items: localHistory.map(toSyncItem) }).unwrap();
+        track('history_synced', { count: localHistory.length });
+      } catch {
+        // Non-fatal — the account exists; a later call can re-sync.
+      }
+      return res;
+    },
+    [dispatch, syncHistory, localHistory],
+  );
+
+  const run = useCallback(
+    async <T>(fn: () => Promise<T>): Promise<T> => {
       setBusy(true);
       try {
-        const res = await socialSignIn(req).unwrap();
-        dispatch(setAuth({ token: res.token, user: res.user }));
-        track('account_created', { provider: req.provider });
-        // Claim anonymous device activity + push local history up. Best-effort:
-        // the Bearer token is now in the store, so this call is authenticated.
-        try {
-          const deviceId = await getDeviceId();
-          await syncHistory({ deviceId, items: localHistory.map(toSyncItem) }).unwrap();
-          track('history_synced', { count: localHistory.length });
-        } catch {
-          // Non-fatal — the account exists; a later call can re-sync.
-        }
-        return res;
+        return await fn();
       } finally {
         setBusy(false);
       }
     },
-    [dispatch, socialSignIn, syncHistory, localHistory],
+    [],
   );
 
-  const signOut = useCallback(async () => {
-    setBusy(true);
-    try {
-      // Revoke server-side first (needs the token), then drop the local session.
-      try {
-        await logout().unwrap();
-      } catch {
-        // Even if the network call fails, clear locally so the user is signed out.
-      }
-      dispatch(clearAuth());
-      track('account_signed_out');
-    } finally {
-      setBusy(false);
-    }
-  }, [dispatch, logout]);
+  const signIn = useCallback(
+    (req: SocialSignInRequest) =>
+      run(async () => complete(await socialSignIn(req).unwrap(), 'account_created')),
+    [run, complete, socialSignIn],
+  );
 
-  return { user, isAuthenticated, signIn, signOut, busy };
+  const register = useCallback(
+    (req: EmailRegisterRequest) =>
+      run(async () => complete(await registerEmail(req).unwrap(), 'account_created')),
+    [run, complete, registerEmail],
+  );
+
+  const login = useCallback(
+    (req: EmailLoginRequest) =>
+      run(async () => complete(await loginEmail(req).unwrap(), 'account_logged_in')),
+    [run, complete, loginEmail],
+  );
+
+  const signOut = useCallback(
+    () =>
+      run(async () => {
+        // Revoke server-side first (needs the token), then drop the local session.
+        try {
+          await logout().unwrap();
+        } catch {
+          // Even if the network call fails, clear locally so the user is signed out.
+        }
+        dispatch(clearAuth());
+        track('account_signed_out');
+      }),
+    [run, logout, dispatch],
+  );
+
+  return { user, isAuthenticated, signIn, register, login, signOut, busy };
 }
 
 function toSyncItem(e: HistoryEntry): HistorySyncItem {

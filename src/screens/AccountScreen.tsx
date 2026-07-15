@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -14,6 +14,7 @@ import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { addEntry, markPurchased } from '../store/historySlice';
 import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
+import AuthSheet from '../components/AuthSheet';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -41,21 +42,15 @@ function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; 
 export default function AccountScreen(_props: Props) {
   const { colors, spacing, isDark } = useTheme();
   const dispatch = useAppDispatch();
-  const { user, isAuthenticated, signIn, signOut, busy } = useAccount();
+  const { user, isAuthenticated, signOut, busy } = useAccount();
+  const [authOpen, setAuthOpen] = useState(false);
 
   // Real Apple/Google SDK sign-in ships next — until then the buttons are an
-  // honest placeholder. In dev, a blue text link runs the full flow against
-  // the backend's mock verifier so the account plumbing is testable now.
+  // honest placeholder. Email + password (the "Log in · Register" link) works
+  // today.
   const comingSoon = () => {
     track('account_prompt_viewed', { source: 'account_tab' });
     Alert.alert('Coming soon', 'Sign in with Apple and Google is on the way.');
-  };
-  const devSignIn = () => {
-    void signIn({
-      provider: 'apple',
-      identityToken: JSON.stringify({ sub: 'dev-apple-1', email: 'dev@vehify.app', name: 'Dev Tester' }),
-      name: 'Dev Tester',
-    });
   };
 
   // Device-local setting (AsyncStorage via the settings slice) — never synced
@@ -143,13 +138,9 @@ export default function AccountScreen(_props: Props) {
               onPress={comingSoon}
               style={{ marginTop: spacing.sm }}
             />
-            {__DEV__ ? (
-              <Pressable onPress={devSignIn} disabled={busy} hitSlop={8} style={styles.textLinkRow}>
-                <Text style={[styles.textLink, { color: colors.primary }]}>
-                  {busy ? 'Signing in…' : 'Dev sign-in (mock)'}
-                </Text>
-              </Pressable>
-            ) : null}
+            <Pressable onPress={() => setAuthOpen(true)} disabled={busy} hitSlop={8} style={styles.textLinkRow}>
+              <Text style={[styles.textLink, { color: colors.primary }]}>Log in · Register</Text>
+            </Pressable>
           </View>
         )}
 
@@ -187,6 +178,8 @@ export default function AccountScreen(_props: Props) {
           />
         </View>
       </ScrollView>
+
+      <AuthSheet visible={authOpen} onClose={() => setAuthOpen(false)} />
     </SafeAreaView>
   );
 }

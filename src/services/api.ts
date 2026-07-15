@@ -4,7 +4,10 @@ import { getDeviceId } from '../config/deviceId';
 import type { PaidTier } from '../types/vehicle';
 import type { RootState } from '../store';
 import type {
+  AuthResponse,
   BasicVehicleResponse,
+  EmailLoginRequest,
+  EmailRegisterRequest,
   HistorySyncRequest,
   HistorySyncResponse,
   LogoutResponse,
@@ -106,6 +109,15 @@ export const api = createApi({
       query: (body) => ({ url: '/auth/social', method: 'POST', body }),
     }),
 
+    // Email + password account creation / sign-in (the non-social path).
+    registerEmail: builder.mutation<AuthResponse, EmailRegisterRequest>({
+      query: (body) => ({ url: '/auth/register', method: 'POST', body }),
+    }),
+
+    loginEmail: builder.mutation<AuthResponse, EmailLoginRequest>({
+      query: (body) => ({ url: '/auth/login', method: 'POST', body }),
+    }),
+
     // Revoke the current device's token server-side (other devices stay in).
     logout: builder.mutation<LogoutResponse, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
@@ -130,6 +142,8 @@ export const {
   useGetReportQuery,
   useRefreshReportMutation,
   useSocialSignInMutation,
+  useRegisterEmailMutation,
+  useLoginEmailMutation,
   useLogoutMutation,
   useSyncHistoryMutation,
 } = api;

@@ -107,6 +107,22 @@ export interface SocialSignInResponse {
   user: { id: number; name: string; email: string };
 }
 
+/** All sign-in paths (social, register, login) return the same token + user. */
+export type AuthResponse = SocialSignInResponse;
+
+/** Email + password account creation (the non-social path). */
+export interface EmailRegisterRequest {
+  name?: string;
+  email: string;
+  password: string;
+}
+
+/** Email + password login. */
+export interface EmailLoginRequest {
+  email: string;
+  password: string;
+}
+
 /**
  * POST /history/sync — claim anonymous device activity onto the account and
  * copy the local history up. `deviceId` is also sent as X-Device-Id; the
