@@ -5,8 +5,8 @@ import type { ReportTier } from '../types/vehicle';
 
 const LABELS: Record<ReportTier, string> = {
   basic: 'BASIC',
-  buyers_analysis: 'ANALYSIS',
-  complete_history: 'FULL HISTORY',
+  buyers_analysis: 'BUYER',
+  complete_history: 'PREMIUM',
 };
 
 export default function Badge({ tier }: { tier: ReportTier }) {

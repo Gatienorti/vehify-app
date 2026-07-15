@@ -27,25 +27,29 @@ type Props = StackScreenProps<'PremiumUpsell'>;
 // Hedge anything a provider may not cover (old/rare vehicles can no-hit on
 // value; NHTSA only crash-tests some models) — never promise undeliverables.
 // Hedges render as small muted text after the label — visible honesty
-// without stealing weight from the promise itself.
+// without stealing weight from the promise itself. Starred lines share ONE
+// small footnote under the list instead of inline hedges wrapping mid-line.
 interface IncludedLine {
   label: string;
-  hedge?: string;
+  starred?: boolean;
 }
+
+const AVAILABILITY_FOOTNOTE =
+  '*When available for your vehicle — data coverage varies by age and model.';
 
 const ANALYSIS_INCLUDED: IncludedLine[] = [
   { label: 'Model Score — complaints, recalls, TSBs & federal investigations' },
-  { label: 'Deal verdict on the asking price', hedge: 'when value is available' },
-  { label: 'Market value & suggested offer', hedge: 'when available for your vehicle' },
+  { label: 'Deal verdict on the asking price', starred: true },
+  { label: 'Market value & suggested offer', starred: true },
   { label: 'Value vs. mileage & negotiation advice' },
-  { label: 'Crash ratings & fuel costs', hedge: 'when on file' },
+  { label: 'Crash ratings & fuel costs', starred: true },
   { label: 'Maintenance outlook for this model' },
 ];
 
 // Report generation pulls several data sources — narrate the wait.
 const BUILDING_MESSAGES = [
   'Pulling recalls, complaints and federal investigations…',
-  'Reading 30 years of paperwork so you don’t have to…',
+  'Checking this model’s track record so you don’t have to…',
   'Asking NHTSA for the gossip on this model…',
   'Crunching the market value at your mileage…',
   'Sharpening the negotiation advice…',
@@ -54,7 +58,7 @@ const BUILDING_MESSAGES = [
 const HISTORY_INCLUDED: IncludedLine[] = [
   { label: 'Everything in the Buyer Report' },
   { label: 'Buy Score for this exact VIN' },
-  { label: 'Accident & collision history', hedge: 'as reported to available sources' },
+  { label: 'Accident & collision history', starred: true },
   { label: 'Title brands (salvage, flood, rebuilt)' },
   { label: 'Theft & odometer records' },
   { label: 'Ownership & service history' },
@@ -175,12 +179,13 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
               <CircleCheckBig size={20} color={colors.success} strokeWidth={2.25} />
               <Text style={[styles.rowText, { color: colors.text }]}>
                 {line.label}
-                {line.hedge ? (
-                  <Text style={[styles.hedge, { color: colors.textMuted }]}>{`  ${line.hedge}`}</Text>
-                ) : null}
+                {line.starred ? <Text style={{ color: colors.textMuted }}>*</Text> : null}
               </Text>
             </View>
           ))}
+          {included.some((l) => l.starred) ? (
+            <Text style={[styles.hedge, { color: colors.textMuted }]}>{AVAILABILITY_FOOTNOTE}</Text>
+          ) : null}
         </View>
 
         {isAnalysis && hasPlateCredit ? (
