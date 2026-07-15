@@ -12,14 +12,12 @@ import {
 import { useTheme } from '../theme';
 import { useAppDispatch } from '../store/hooks';
 import { markPurchased } from '../store/historySlice';
-import { recordPurchase } from '../store/purchasesSlice';
 import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
 import { useLazyGetPurchasesQuery } from '../services/api';
 import AuthSheet, { type AuthMode } from '../components/AuthSheet';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
-import { PRODUCT_IDS } from '../config/pricing';
 import { track } from '../config/analytics';
 import type { TabScreenProps } from '../types/navigation';
 
@@ -82,16 +80,9 @@ export default function AccountScreen(_props: Props) {
         Alert.alert('Nothing to restore', 'No report purchases were found for this account or device.');
         return;
       }
+      // Server is the ownership record; just refresh the local history badges
+      // (paint) for any entries we already show.
       purchases.forEach((p) => {
-        dispatch(
-          recordPurchase({
-            vin: p.vin,
-            tier: p.tier,
-            reportId: p.reportId,
-            productId: PRODUCT_IDS[p.tier],
-            purchasedAt: p.purchasedAt,
-          }),
-        );
         dispatch(markPurchased({ vin: p.vin, tier: p.tier, reportId: p.reportId }));
       });
       track('purchases_restored', { count: purchases.length });

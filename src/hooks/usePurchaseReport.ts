@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAppDispatch } from '../store/hooks';
 import { markPurchased } from '../store/historySlice';
-import { recordPurchase } from '../store/purchasesSlice';
 import { useConfirmPurchaseMutation, useStartPurchaseMutation } from '../services/api';
 import { PRODUCT_IDS } from '../config/pricing';
 import { track } from '../config/analytics';
@@ -64,17 +63,9 @@ export function usePurchaseReport() {
         }).unwrap();
         // Fully settled — clear so the next purchase starts fresh.
         startTokenRef.current = null;
-        // Trust the server's tier on the confirm — it is the billing record.
+        // Optimistic paint of the local history badge; the server (via the
+        // Purchases/History tag invalidation) is the real ownership record.
         dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId }));
-        dispatch(
-          recordPurchase({
-            vin,
-            tier: confirm.tier,
-            reportId: confirm.reportId,
-            productId: PRODUCT_IDS[tier],
-            purchasedAt: new Date().toISOString(),
-          }),
-        );
         track('premium_purchase_completed', { vin, tier: confirm.tier });
         return confirm;
       } catch (e) {
