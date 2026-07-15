@@ -11,6 +11,10 @@ export interface Vehicle {
   driveType?: string;
   fuelType?: string;
   manufacturer?: string;
+  /** Numeric specs (free from NHTSA vPIC) — absent when the decode lacks them. */
+  horsepower?: number;
+  doors?: number;
+  seats?: number;
 }
 
 /** Where a lookup result came from — drives free-refresh rules (spec §9, §10). */
@@ -107,10 +111,10 @@ export interface ServiceRecord {
 /**
  * Buyer's Analysis — "should I buy this vehicle?" (Report Tiers v2, tier 3).
  * Included with both paid tiers. Field list mirrors the tiers PDF: score,
- * recommendation, market value (a single point estimate — no MSRP/depreciation
- * source exists, so we never claim them), offer + negotiation, mileage +
- * rollback, maintenance outlook, factory equipment, photos, recalls, TSBs,
- * complaint trends.
+ * recommendation, market value (a single point estimate), MSRP + depreciation
+ * when the free trims dataset covers the trim (~2015–2020, else null), offer +
+ * negotiation, mileage + rollback, maintenance outlook, factory equipment,
+ * photos, recalls, TSBs, complaint trends.
  */
 export interface BuyersAnalysis {
   /**
