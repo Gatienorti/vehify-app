@@ -1,0 +1,67 @@
+{
+  "name": "vehify-mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/bottom-tabs": "^7.18.8",
+    "@react-navigation/native": "^7.3.8",
+    "@react-navigation/native-stack": "^7.17.10",
+    "@reduxjs/toolkit": "^2.12.0",
+    "babel-preset-expo": "~57.0.0",
+    "expo": "~57.0.4",
+    "expo-asset": "~57.0.3",
+    "expo-camera": "~57.0.1",
+    "expo-file-system": "~57.0.0",
+    "expo-image-manipulator": "~57.0.2",
+    "expo-linear-gradient": "~57.0.0",
+    "expo-secure-store": "~57.0.0",
+    "expo-status-bar": "~57.0.0",
+    "lucide-react-native": "^1.24.0",
+    "react": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-mlkit-ocr": "^0.3.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-svg": "15.15.4",
+    "react-redux": "^9.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.1",
+    "@types/react": "~19.2.2",
+    "eslint": "^9.39.4",
+    "eslint-config-expo": "^57.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jest": "~29.7.0",
+    "jest-expo": "~57.0.1",
+    "prettier": "^3.9.5",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json}\"",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/fix-expo-swift.js"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.ts"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@reduxjs/toolkit|redux|immer|reselect))"
+    ]
+  },
+  "private": true
+}

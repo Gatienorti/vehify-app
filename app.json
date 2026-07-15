@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Vehify",
+    "slug": "vehify-mobile",
+    "scheme": "vehify",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vehify.app"
+    },
+    "android": {
+      "package": "com.vehify.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Vehify uses the camera to scan license plates and VIN barcodes."
+        }
+      ],
+      "expo-asset",
+      "expo-secure-store"
+    ]
+  }
+}
