@@ -7,7 +7,7 @@ import VehicleCard from '../components/VehicleCard';
 import PrimaryButton from '../components/PrimaryButton';
 import BuyAnalysisSheet from '../components/BuyAnalysisSheet';
 import { track } from '../config/analytics';
-import { useGetVehicleBasicQuery } from '../services/api';
+import { useGetPurchasesQuery, useGetVehicleBasicQuery } from '../services/api';
 import { useAppSelector } from '../store/hooks';
 import { usePurchaseReport } from '../hooks/usePurchaseReport';
 import { PRICING, buyersAnalysisPrice, formatUsd } from '../config/pricing';
@@ -31,8 +31,10 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   const { vin } = route.params;
   const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin);
   const historyEntry = useAppSelector((s) => s.history.entries.find((e) => e.vin === vin));
-  // Purchases are the durable ownership record (they survive a history clear).
-  const purchase = useAppSelector((s) => s.purchases.records.find((r) => r.vin === vin));
+  // Ownership comes from the SERVER (device_id / user_id), never a local cache
+  // that can claim a report the backend no longer has.
+  const { data: purchases } = useGetPurchasesQuery();
+  const purchase = purchases?.find((r) => r.vin === vin && r.reportId);
   // The plate fee is credited toward Buyer's Analysis — earned when this
   // vehicle was reached via a (paid) plate lookup (Report Tiers v2, tier 2).
   const hasPlateCredit = historyEntry?.lookupType === 'plate';
