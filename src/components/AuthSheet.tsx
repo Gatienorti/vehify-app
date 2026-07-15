@@ -13,12 +13,12 @@ import { useTheme } from '../theme';
 import PrimaryButton from './PrimaryButton';
 import { useAccount } from '../hooks/useAccount';
 
-type Mode = 'login' | 'register';
+export type AuthMode = 'login' | 'register';
 
 interface Props {
   visible: boolean;
   /** Which tab to open on. */
-  initialMode?: Mode;
+  initialMode?: AuthMode;
   onClose: () => void;
   /** Called after a successful login/register (the session is already stored). */
   onSuccess?: () => void;
@@ -42,7 +42,7 @@ function errorMessage(err: unknown): string {
 export default function AuthSheet({ visible, initialMode = 'login', onClose, onSuccess }: Props) {
   const { colors, radius, spacing } = useTheme();
   const { register, login, busy } = useAccount();
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

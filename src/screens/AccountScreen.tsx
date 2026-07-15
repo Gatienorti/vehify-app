@@ -14,7 +14,7 @@ import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { addEntry, markPurchased } from '../store/historySlice';
 import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
-import AuthSheet from '../components/AuthSheet';
+import AuthSheet, { type AuthMode } from '../components/AuthSheet';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -44,6 +44,11 @@ export default function AccountScreen(_props: Props) {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated, signOut, busy } = useAccount();
   const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const openAuth = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setAuthOpen(true);
+  };
 
   // Real Apple/Google SDK sign-in ships next — until then the buttons are an
   // honest placeholder. Email + password (the "Log in · Register" link) works
@@ -138,9 +143,15 @@ export default function AccountScreen(_props: Props) {
               onPress={comingSoon}
               style={{ marginTop: spacing.sm }}
             />
-            <Pressable onPress={() => setAuthOpen(true)} disabled={busy} hitSlop={8} style={styles.textLinkRow}>
-              <Text style={[styles.textLink, { color: colors.primary }]}>Log in · Register</Text>
-            </Pressable>
+            <View style={styles.textLinkRow}>
+              <Pressable onPress={() => openAuth('login')} disabled={busy} hitSlop={8}>
+                <Text style={[styles.textLink, { color: colors.primary }]}>Log in</Text>
+              </Pressable>
+              <Text style={[styles.textLink, { color: colors.textMuted, marginHorizontal: 8 }]}>·</Text>
+              <Pressable onPress={() => openAuth('register')} disabled={busy} hitSlop={8}>
+                <Text style={[styles.textLink, { color: colors.primary }]}>Register</Text>
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -179,7 +190,7 @@ export default function AccountScreen(_props: Props) {
         </View>
       </ScrollView>
 
-      <AuthSheet visible={authOpen} onClose={() => setAuthOpen(false)} />
+      <AuthSheet visible={authOpen} initialMode={authMode} onClose={() => setAuthOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -190,7 +201,7 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 16, padding: 16 },
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   cardBody: { fontSize: 14, lineHeight: 20 },
-  textLinkRow: { alignItems: 'center', paddingVertical: 12 },
+  textLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
   textLink: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1 },
   rowLabel: { fontSize: 16 },
