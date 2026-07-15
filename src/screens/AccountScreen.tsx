@@ -10,13 +10,16 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../theme';
-import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { addEntry, markPurchased } from '../store/historySlice';
+import { useAppDispatch } from '../store/hooks';
+import { markPurchased } from '../store/historySlice';
+import { recordPurchase } from '../store/purchasesSlice';
 import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
+import { useLazyGetPurchasesQuery } from '../services/api';
 import AuthSheet, { type AuthMode } from '../components/AuthSheet';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
+import { PRODUCT_IDS } from '../config/pricing';
 import { track } from '../config/analytics';
 import type { TabScreenProps } from '../types/navigation';
 
@@ -64,43 +67,41 @@ export default function AccountScreen(_props: Props) {
     dispatch(setThemePreference(dark ? 'dark' : 'light'));
     track('theme_changed', { mode: dark ? 'dark' : 'light' });
   };
-  const entryCount = useAppSelector((s) => s.history.entries.length);
-  const historyEntries = useAppSelector((s) => s.history.entries);
-  const purchases = useAppSelector((s) => s.purchases.records);
+  const [fetchPurchases, { isFetching: restoring }] = useLazyGetPurchasesQuery();
 
-  // Mock restore: re-link every purchase on this device back into history
-  // (spec §16 — always support Restore Purchases). The RevenueCat phase swaps
-  // the source from the local slice to store receipts; the flow shape stays.
-  const restorePurchases = () => {
+  // Server-backed restore: pull the owner's paid reports (by account or device)
+  // and re-seed the local entitlement cache, so owned-report shortcuts work
+  // after a reinstall or on a new device. History itself is server-authoritative
+  // (its tier badges come from GET /history), so we only rebuild the purchases
+  // slice + refresh the badges for any locally-known entries.
+  const restorePurchases = async () => {
     track('restore_purchases_tapped');
-    if (purchases.length === 0) {
-      Alert.alert('Nothing to restore', 'No report purchases were found for this device.');
-      return;
-    }
-    purchases.forEach((p) => {
-      const existing = historyEntries.find((e) => e.vin === p.vin);
-      if (existing) {
-        dispatch(markPurchased({ vin: p.vin, tier: p.tier, reportId: p.reportId }));
-      } else {
-        // History was cleared — recreate a minimal entry so the report is
-        // reachable again (title falls back to the VIN).
+    try {
+      const purchases = await fetchPurchases().unwrap();
+      if (purchases.length === 0) {
+        Alert.alert('Nothing to restore', 'No report purchases were found for this account or device.');
+        return;
+      }
+      purchases.forEach((p) => {
         dispatch(
-          addEntry({
-            id: `${p.vin}-restored-${p.purchasedAt}`,
+          recordPurchase({
             vin: p.vin,
-            lookupType: 'vin',
-            lookedUpAt: p.purchasedAt,
             tier: p.tier,
             reportId: p.reportId,
+            productId: PRODUCT_IDS[p.tier],
+            purchasedAt: p.purchasedAt,
           }),
         );
-      }
-    });
-    track('purchases_restored', { count: purchases.length });
-    Alert.alert(
-      'Purchases restored',
-      `${purchases.length} report${purchases.length === 1 ? '' : 's'} restored to your History tab.`,
-    );
+        dispatch(markPurchased({ vin: p.vin, tier: p.tier, reportId: p.reportId }));
+      });
+      track('purchases_restored', { count: purchases.length });
+      Alert.alert(
+        'Purchases restored',
+        `${purchases.length} report${purchases.length === 1 ? '' : 's'} restored.`,
+      );
+    } catch {
+      Alert.alert('Couldn’t restore', 'We couldn’t reach the server just now. Please try again.');
+    }
   };
 
   return (
@@ -129,8 +130,8 @@ export default function AccountScreen(_props: Props) {
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Protect your reports</Text>
             <Text style={[styles.cardBody, { color: colors.textMuted }]}>
-              Your {entryCount} lookup{entryCount === 1 ? '' : 's'} are saved only on this device. Create a
-              free account to back them up and access reports anywhere.
+              Create a free account to keep your lookups and reports backed up and available on any
+              device you sign in on.
             </Text>
             <PrimaryButton
               label="Continue with Apple"
@@ -169,7 +170,11 @@ export default function AccountScreen(_props: Props) {
             />
           </View>
           {SHOW_RESTORE_PURCHASES ? (
-            <Row icon={RefreshCw} label="Restore purchases" onPress={restorePurchases} />
+            <Row
+              icon={RefreshCw}
+              label={restoring ? 'Restoring…' : 'Restore purchases'}
+              onPress={() => void restorePurchases()}
+            />
           ) : null}
           <Row
             icon={HelpCircle}

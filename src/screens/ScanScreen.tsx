@@ -268,10 +268,11 @@ export default function ScanScreen({ navigation, route }: Props) {
     [lookupVin, recordLookup, navigation],
   );
 
-  // Paid $0.25 plate lookup (tier 2): start the purchase (mock IAP until
-  // RevenueCat ships), then confirm — the backend runs the plate→VIN lookup
-  // inline and returns the match. Fires ONLY from the confirm sheet's
-  // explicit button, never from camera frames.
+  // Paid $0.25 plate lookup (tier 2), RESOLVE-THEN-CHARGE: start() resolves the
+  // plate first and only returns a token on a hit. A no-hit is surfaced here
+  // WITHOUT ever charging (no store purchase is triggered). On a hit we run the
+  // purchase (mock IAP until RevenueCat ships), then confirm to reveal the VIN.
+  // Fires ONLY from the confirm sheet's explicit button, never from camera frames.
   const doPlatePurchase = useCallback(
     async (plate: string, state: string) => {
       track('plate_purchase_started', { state });
@@ -285,9 +286,30 @@ export default function ScanScreen({ navigation, route }: Props) {
             state,
             productId: PLATE_PRODUCT_ID,
           }).unwrap();
+
+          // No match → the user is NOT charged. Steer to free VIN entry.
+          if (!start.found) {
+            plateTokenRef.current = null;
+            setSheetOpen(false);
+            setPendingPlate(null);
+            track('plate_purchase_no_hit', { state });
+            Alert.alert(
+              'No vehicle found for this plate',
+              'We searched but no match came back — so there’s no charge. Enter the VIN instead; VIN lookups are free and exact.',
+              [
+                { text: 'Enter VIN', onPress: () => setSheetOpen(true) },
+                { text: 'Back', style: 'cancel' },
+              ],
+            );
+            return;
+          }
+
           token = start.purchaseToken;
           plateTokenRef.current = { key: attemptKey, token };
         }
+
+        // TODO(RevenueCat): trigger the $0.25 store purchase here before
+        // confirming. Mocked until RevenueCat lands.
         const res = await confirmPlatePurchase({
           purchaseToken: token,
           platform: 'ios',
@@ -296,21 +318,8 @@ export default function ScanScreen({ navigation, route }: Props) {
         plateTokenRef.current = null;
         setSheetOpen(false);
         setPendingPlate(null);
-        if (res.found) {
-          track(res.source === 'cache' ? 'plate_cache_hit' : 'plate_cache_miss', { state });
-          track('plate_purchase_completed', { state, source: res.source });
-          navigation.navigate('VehicleMatch', { result: res, plate, state });
-        } else {
-          track('plate_purchase_no_hit', { state });
-          Alert.alert(
-            'No vehicle found for this plate',
-            'We searched but no match came back for this plate. Enter the VIN instead — VIN lookups are free and exact.',
-            [
-              { text: 'Enter VIN', onPress: () => setSheetOpen(true) },
-              { text: 'Back', style: 'cancel' },
-            ],
-          );
-        }
+        track('plate_purchase_completed', { state, source: res.source });
+        navigation.navigate('VehicleMatch', { result: res, plate, state });
       } catch {
         track('plate_purchase_failed', { state });
         setLookupError("The lookup didn't go through. Check your connection and try again.");

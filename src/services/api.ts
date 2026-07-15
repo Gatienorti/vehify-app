@@ -3,14 +3,17 @@ import { API_BASE_URL } from '../config/env';
 import { getDeviceId } from '../config/deviceId';
 import type { PaidTier } from '../types/vehicle';
 import type { RootState } from '../store';
+import type { HistoryEntry } from '../types/history';
 import type {
   AuthResponse,
   BasicVehicleResponse,
   EmailLoginRequest,
   EmailRegisterRequest,
+  HistoryFeedItem,
   HistorySyncRequest,
   HistorySyncResponse,
   LogoutResponse,
+  PurchaseFeedItem,
   PlateLookupRequest,
   PlateLookupResponse,
   PlatePurchaseConfirmRequest,
@@ -50,14 +53,17 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['VehicleBasic', 'Report'],
+  tagTypes: ['VehicleBasic', 'Report', 'History', 'Purchases'],
   endpoints: (builder) => ({
     lookupVin: builder.mutation<VinLookupResponse, VinLookupRequest>({
       query: (body) => ({ url: '/lookup/vin', method: 'POST', body }),
+      // The backend records this lookup in the server history — refresh the feed.
+      invalidatesTags: ['History'],
     }),
 
     lookupPlate: builder.mutation<PlateLookupResponse, PlateLookupRequest>({
       query: (body) => ({ url: '/lookup/plate', method: 'POST', body }),
+      invalidatesTags: ['History'],
     }),
 
     refreshPlate: builder.mutation<PlateLookupResponse, PlateRefreshRequest>({
@@ -73,6 +79,7 @@ export const api = createApi({
 
     confirmPlatePurchase: builder.mutation<PlatePurchaseConfirmResponse, PlatePurchaseConfirmRequest>({
       query: (body) => ({ url: '/plate/purchase/confirm', method: 'POST', body }),
+      invalidatesTags: ['History'],
     }),
 
     getVehicleBasic: builder.query<BasicVehicleResponse, string>({
@@ -86,7 +93,9 @@ export const api = createApi({
 
     confirmPurchase: builder.mutation<PurchaseConfirmResponse, PurchaseConfirmRequest>({
       query: (body) => ({ url: '/report/purchase/confirm', method: 'POST', body }),
-      invalidatesTags: ['Report'],
+      // A purchase changes the report, the history feed's tier badge, and the
+      // owned-reports list.
+      invalidatesTags: ['Report', 'History', 'Purchases'],
     }),
 
     getReport: builder.query<ReportResponse, { id: string; vin: string; tier: PaidTier }>({
@@ -126,6 +135,38 @@ export const api = createApi({
     // Claim anonymous device activity onto the account + copy local history up.
     syncHistory: builder.mutation<HistorySyncResponse, HistorySyncRequest>({
       query: (body) => ({ url: '/history/sync', method: 'POST', body }),
+      // A fresh account's claimed rows change the feed + owned reports.
+      invalidatesTags: ['History', 'Purchases'],
+    }),
+
+    // --- Server-authoritative reads (the backend is the source of truth) ---
+
+    // The lookup history feed for the History tab. Normalizes the server's
+    // nullable fields to the app's HistoryEntry shape.
+    getHistory: builder.query<HistoryEntry[], void>({
+      query: () => '/history',
+      transformResponse: (items: HistoryFeedItem[]): HistoryEntry[] =>
+        items.map((i) => ({
+          id: i.id,
+          vin: i.vin,
+          plate: i.plate ?? undefined,
+          state: i.state ?? undefined,
+          lookupType: i.lookupType,
+          year: i.year ?? undefined,
+          make: i.make ?? undefined,
+          model: i.model ?? undefined,
+          trim: i.trim ?? undefined,
+          lookedUpAt: i.lookedUpAt,
+          tier: i.tier,
+          reportId: i.reportId ?? undefined,
+        })),
+      providesTags: ['History'],
+    }),
+
+    // The owner's paid reports — server-backed Restore Purchases.
+    getPurchases: builder.query<PurchaseFeedItem[], void>({
+      query: () => '/purchases',
+      providesTags: ['Purchases'],
     }),
   }),
 });
@@ -146,4 +187,7 @@ export const {
   useLoginEmailMutation,
   useLogoutMutation,
   useSyncHistoryMutation,
+  useGetHistoryQuery,
+  useGetPurchasesQuery,
+  useLazyGetPurchasesQuery,
 } = api;

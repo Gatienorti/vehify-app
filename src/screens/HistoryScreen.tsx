@@ -1,8 +1,10 @@
-import React, { useEffect } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme';
 import { useAppSelector } from '../store/hooks';
+import { useGetHistoryQuery } from '../services/api';
 import Badge from '../components/Badge';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -24,20 +26,39 @@ function when(iso: string): string {
 
 export default function HistoryScreen({ navigation }: Props) {
   const { colors, spacing } = useTheme();
-  const entries = useAppSelector((s) => s.history.entries);
+  // Server is the source of truth (keyed on account or device). Local history
+  // is only an instant-paint cache: shown until the server responds, and the
+  // graceful fallback when offline.
+  const { data, isLoading, refetch } = useGetHistoryQuery();
+  const localEntries = useAppSelector((s) => s.history.entries);
+  const entries = data ?? localEntries;
+
+  // Keep the feed fresh when returning to the tab (a lookup elsewhere records
+  // server-side; tag invalidation also refetches, this covers cold returns).
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
 
   useEffect(() => {
     track('history_viewed', { count: entries.length });
   }, [entries.length]);
 
+  const showEmpty = entries.length === 0;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <Text style={[styles.header, { color: colors.text, paddingHorizontal: spacing.lg }]}>History</Text>
-      {entries.length === 0 ? (
+      {showEmpty && isLoading ? (
+        <View style={styles.empty}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : showEmpty ? (
         <View style={styles.empty}>
           <Text style={[styles.emptyTitle, { color: colors.text }]}>No lookups yet</Text>
           <Text style={[styles.emptyBody, { color: colors.textMuted }]}>
-            Tap SCAN to check your first vehicle. Your history is saved right here on this device.
+            Tap SCAN to check your first vehicle. Your history syncs to your account when you sign in.
           </Text>
         </View>
       ) : (

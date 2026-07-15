@@ -1,5 +1,6 @@
 import type {
   PlatePurchaseConfirmResponse,
+  PlatePurchaseStartResponse,
   ReportResponse,
 } from '../api';
 
@@ -82,6 +83,8 @@ const analysisOnlyReport: ReportResponse = {
   history: null,
 };
 
+// Resolve-then-charge: a hit is revealed by confirm; a miss is surfaced by
+// START (no token, never charged) — so the miss fixture is a start response.
 const plateHit: PlatePurchaseConfirmResponse = {
   purchaseId: 'pp_1',
   found: true,
@@ -91,16 +94,14 @@ const plateHit: PlatePurchaseConfirmResponse = {
   vehicle: { vin: '4T1B11HK5KU212345' },
 };
 
-const plateMiss: PlatePurchaseConfirmResponse = {
-  purchaseId: 'pp_2',
-  found: false,
-  vehicle: null,
-};
+const plateStartHit: PlatePurchaseStartResponse = { found: true, purchaseToken: 'pp_1' };
+const plateStartMiss: PlatePurchaseStartResponse = { found: false };
 
 describe('backend contract fixtures (v2.1)', () => {
   it('narrows the plate purchase union on `found`', () => {
     expect(plateHit.found && plateHit.vehicle.vin).toBe('4T1B11HK5KU212345');
-    expect(plateMiss.found).toBe(false);
+    expect(plateStartHit.found && plateStartHit.purchaseToken).toBe('pp_1');
+    expect(plateStartMiss.found).toBe(false);
   });
 
   it('keeps the honesty split: tier-3 has null buyScore, tier-4 a real one', () => {

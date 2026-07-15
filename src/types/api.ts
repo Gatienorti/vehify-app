@@ -1,4 +1,4 @@
-import type { BasicReport, LookupSource, PaidTier, Report, Vehicle } from './vehicle';
+import type { BasicReport, LookupSource, PaidTier, ReportTier, Report, Vehicle } from './vehicle';
 
 /** Request/response contracts mirror the Laravel backend (../vehify-web, spec §17). */
 
@@ -38,9 +38,16 @@ export interface PlatePurchaseStartRequest {
   productId: string;
 }
 
-export interface PlatePurchaseStartResponse {
-  purchaseToken: string;
-}
+/**
+ * Resolve-then-charge: start() looks up the plate FIRST and only returns a
+ * chargeable `purchaseToken` on a hit. A miss returns `found: false` with no
+ * token — the app must NOT trigger the store purchase (the user is never
+ * charged for a plate we can't resolve) and steers to free VIN entry.
+ * Mirrors PlatePurchaseController@start in ../vehify-web.
+ */
+export type PlatePurchaseStartResponse =
+  | { found: true; purchaseToken: string }
+  | { found: false };
 
 export interface PlatePurchaseConfirmRequest {
   purchaseToken: string;
@@ -49,14 +56,13 @@ export interface PlatePurchaseConfirmRequest {
 }
 
 /**
- * Confirm runs the plate→VIN lookup inline. Discriminated on `found`: a hit
- * carries the full PlateLookupResponse shape (hand it straight to
- * VehicleMatch); a miss keeps the paid record and steers the user to VIN
- * entry. Mirrors PlatePurchaseController@confirm in ../vehify-web.
+ * Confirm reveals the VIN that start() already resolved (served from cache, no
+ * extra provider call) — only ever called for a hit, so it always carries the
+ * full PlateLookupResponse shape (hand it straight to VehicleMatch).
+ * Mirrors PlatePurchaseController@confirm in ../vehify-web.
  */
 export type PlatePurchaseConfirmResponse =
-  | ({ purchaseId: string; found: true } & PlateLookupResponse)
-  | { purchaseId: string; found: false; vehicle: null };
+  { purchaseId: string; found: true } & PlateLookupResponse;
 
 export interface PurchaseStartRequest {
   vin: string;
@@ -149,4 +155,32 @@ export interface HistorySyncResponse {
 
 export interface LogoutResponse {
   message?: string;
+}
+
+/**
+ * GET /history — the server-authoritative lookup feed for the History tab
+ * (owner = user_id when signed in, else the anonymous device). Nullable fields
+ * are normalized to `HistoryEntry` (null → undefined) in the API transform.
+ */
+export interface HistoryFeedItem {
+  id: string;
+  vin: string;
+  plate: string | null;
+  state: string | null;
+  lookupType: 'vin' | 'plate';
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  trim: string | null;
+  lookedUpAt: string;
+  tier: ReportTier;
+  reportId: string | null;
+}
+
+/** GET /purchases — the owner's paid reports, for a server-backed Restore. */
+export interface PurchaseFeedItem {
+  vin: string;
+  tier: PaidTier;
+  reportId: string;
+  purchasedAt: string;
 }
