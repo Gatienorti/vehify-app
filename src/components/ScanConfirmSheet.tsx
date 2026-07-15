@@ -14,16 +14,7 @@ import PrimaryButton from './PrimaryButton';
 import LoadingOverlay from './LoadingOverlay';
 import { US_STATES, normalizePlate } from '../utils/plate';
 import { PRICING, formatUsd } from '../config/pricing';
-
-// Plate→VIN is the slow call (state record + live NHTSA decode) — keep the
-// wait honest and a little fun.
-const LOOKUP_MESSAGES = [
-  'Asking the state politely for the record…',
-  'Reading a 17-character VIN so you don’t have to squint…',
-  'Cross-checking the federal database…',
-  'Plates transfer, VINs don’t. Making sure we get the right one…',
-  'Almost there — good data beats fast data.',
-];
+import { PLATE_LOOKUP_MESSAGES } from '../config/loadingMessages';
 
 interface Props {
   visible: boolean;
@@ -160,7 +151,7 @@ export default function ScanConfirmSheet({
         </View>
       </Modal>
 
-      <LoadingOverlay visible={submitting} title="Looking up this plate…" messages={LOOKUP_MESSAGES} />
+      <LoadingOverlay visible={submitting} title="Looking up this plate…" messages={PLATE_LOOKUP_MESSAGES} />
     </Modal>
   );
 }

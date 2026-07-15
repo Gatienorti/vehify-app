@@ -9,17 +9,10 @@ import {
 } from 'react-native';
 import { Pencil } from 'lucide-react-native';
 import { useTheme } from '../theme';
+import { VIN_DECODE_MESSAGES } from '../config/loadingMessages';
 import PrimaryButton from './PrimaryButton';
 import LoadingOverlay from './LoadingOverlay';
 import { normalizeVin, validateVin } from '../utils/vin';
-
-const DECODE_MESSAGES = [
-  'Decoding the VIN with the federal database…',
-  '17 characters, zero guesswork…',
-  'Checking what the factory says this car is…',
-  'VINs never lie. Plates sometimes do…',
-  'One moment — verifying, not guessing.',
-];
 
 interface Props {
   visible: boolean;
@@ -109,7 +102,7 @@ export default function VinConfirmSheet({
         </Pressable>
       </View>
 
-      <LoadingOverlay visible={submitting} title="Decoding this VIN…" messages={DECODE_MESSAGES} />
+      <LoadingOverlay visible={submitting} title="Decoding this VIN…" messages={VIN_DECODE_MESSAGES} />
     </Modal>
   );
 }

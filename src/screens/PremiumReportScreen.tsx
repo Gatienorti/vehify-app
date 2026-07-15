@@ -29,6 +29,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { useGetReportQuery, useRefreshReportMutation } from '../services/api';
 import { PRICING, formatUsd } from '../config/pricing';
+import { REPORT_OPEN_MESSAGES } from '../config/loadingMessages';
 import {
   dealVerdictLabel,
   formatPriceDelta,
@@ -256,11 +257,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           visible
           dim={false}
           title="Opening your report…"
-          messages={[
-            'Fetching it from the vault…',
-            'Un-crumpling the paperwork…',
-            'Almost there…',
-          ]}
+          messages={REPORT_OPEN_MESSAGES}
         />
       </SafeAreaView>
     );

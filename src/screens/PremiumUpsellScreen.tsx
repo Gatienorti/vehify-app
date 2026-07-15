@@ -15,6 +15,7 @@ import { useTheme } from '../theme';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { track } from '../config/analytics';
+import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { usePurchaseReport } from '../hooks/usePurchaseReport';
 import { PRICING, buyersAnalysisPrice, formatUsd } from '../config/pricing';
 import { parseOptionalPositiveInt } from '../utils/number';
@@ -44,15 +45,6 @@ const ANALYSIS_INCLUDED: IncludedLine[] = [
   { label: 'Value vs. mileage & negotiation advice' },
   { label: 'Crash ratings & fuel costs', starred: true },
   { label: 'Maintenance outlook for this model' },
-];
-
-// Report generation pulls several data sources — narrate the wait.
-const BUILDING_MESSAGES = [
-  'Pulling recalls, complaints and federal investigations…',
-  'Checking this model’s track record so you don’t have to…',
-  'Asking NHTSA for the gossip on this model…',
-  'Crunching the market value at your mileage…',
-  'Sharpening the negotiation advice…',
 ];
 
 const HISTORY_INCLUDED: IncludedLine[] = [
@@ -209,7 +201,7 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
       <LoadingOverlay
         visible={buying}
         title={isAnalysis ? 'Building your analysis…' : 'Adding the full history…'}
-        messages={BUILDING_MESSAGES}
+        messages={BUILDING_REPORT_MESSAGES}
       />
     </SafeAreaView>
   );

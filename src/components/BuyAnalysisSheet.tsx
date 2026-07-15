@@ -13,6 +13,7 @@ import { useTheme } from '../theme';
 import PrimaryButton from './PrimaryButton';
 import LoadingOverlay from './LoadingOverlay';
 import { formatUsd } from '../config/pricing';
+import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { parseOptionalPositiveInt } from '../utils/number';
 
 interface Props {
@@ -24,15 +25,6 @@ interface Props {
   /** Buy with whatever was entered — undefined fields were skipped. */
   onBuy: (mileage: number | undefined, askingPrice: number | undefined) => void;
 }
-
-// Report generation pulls several data sources — narrate the wait.
-const BUILDING_MESSAGES = [
-  'Pulling recalls, complaints and federal investigations…',
-  'Reading 30 years of paperwork so you don’t have to…',
-  'Asking NHTSA for the gossip on this model…',
-  'Crunching the market value at your mileage…',
-  'Sharpening the negotiation advice…',
-];
 
 /**
  * The buy step as a bottom sheet — no separate screen. Two optional inputs
@@ -107,7 +99,7 @@ export default function BuyAnalysisSheet({ visible, price, submitting = false, o
         </View>
       </KeyboardAvoidingView>
 
-      <LoadingOverlay visible={submitting} title="Building your analysis…" messages={BUILDING_MESSAGES} />
+      <LoadingOverlay visible={submitting} title="Building your analysis…" messages={BUILDING_REPORT_MESSAGES} />
     </Modal>
   );
 }
