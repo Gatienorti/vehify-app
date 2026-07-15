@@ -489,14 +489,22 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </Section>
         ) : null}
 
-        {/* Mileage & rollback — HISTORY-class data, present only when real
-            odometer records exist (complete_history). The analysis tier never
-            fakes a timeline or claims a rollback check it didn't run. */}
-        {analysis.mileageHistory.length ? (
+        {/* Mileage & rollback — HISTORY-class data, gated on the complete_history
+            tier (history present), never on the analysis tier. We never fake a
+            timeline or claim a rollback check we didn't run. */}
+        {history && analysis.mileageHistory.length ? (
           <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected}>
             <StatRow
               label="Rollback check"
-              value={analysis.rollbackDetected ? 'Discrepancy found' : 'No issues found'}
+              value={
+                analysis.rollbackDetected
+                  ? 'Discrepancy found'
+                  : // Absence of records is not a clean bill — only assert
+                    // "no issues" with enough readings to actually compare.
+                    analysis.mileageHistory.length >= 2
+                    ? 'No issues found'
+                    : 'Not enough readings to check'
+              }
               bad={analysis.rollbackDetected}
             />
             {lastMileage && !showAllMileage ? (
