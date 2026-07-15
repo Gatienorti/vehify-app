@@ -18,9 +18,9 @@ export type LookupSource = 'cache' | 'live';
 
 /**
  * What the user owns for a vehicle (Report Tiers MVP v2):
- *   basic            — free VIN/plate result (verify + identify)
- *   buyers_analysis  — paid "should I buy this?" report ($2.99 / $2.74)
- *   complete_history — buyers_analysis + full history ($7.99)
+ *   basic            — Basic Report: free VIN/plate result (verify + identify)
+ *   buyers_analysis  — Buyer Report: "should I buy this?" ($1.99 / $1.74)
+ *   complete_history — Premium Report: buyers_analysis + full history (+$3 = $4.99)
  */
 export type ReportTier = 'basic' | 'buyers_analysis' | 'complete_history';
 
@@ -112,10 +112,43 @@ export interface ServiceRecord {
  * complaint trends.
  */
 export interface BuyersAnalysis {
-  buyScore: BuyScore;
+  /**
+   * Model & Deal honesty split (Report Tiers v2.1):
+   *  - modelScore judges the MODEL's track record (complaints, recalls, TSBs,
+   *    federal investigations, crash rating) — always present.
+   *  - buyScore judges THIS VIN's records — null until the buyer owns the
+   *    Complete Vehicle History (that's the upsell).
+   */
+  modelScore: BuyScore;
+  buyScore?: BuyScore | null;
+  /** Asking price vs market value at the entered mileage. verdict null without askingPrice. */
+  deal?: {
+    verdict: 'good' | 'fair' | 'high' | null;
+    priceDelta: number | null;
+    reason: string;
+  } | null;
+  /** The asking price the buyer entered at purchase (dollars). */
+  askingPrice?: number | null;
+  /** NHTSA defect investigations into this model — open ones are the red flag. */
+  investigations?: {
+    total: number;
+    open: number;
+    items: {
+      actionNumber: string;
+      subject: string | null;
+      component: string | null;
+      openedAt: string | null;
+      closedAt: string | null;
+      isOpen: boolean;
+      recallCampaign: string | null;
+    }[];
+  } | null;
   recommendation: string;
   /** Market value — a paid provider call, included with every analysis. */
   estimatedValue?: number | null;
+  /** Typical market range around the estimate. */
+  valueLow?: number | null;
+  valueHigh?: number | null;
   /** Original MSRP, for depreciation context. */
   msrp?: number | null;
   /** Percent of MSRP lost since new (0–100). */
@@ -133,6 +166,25 @@ export interface BuyersAnalysis {
   /** Manufacturer communications (TSBs) on file. */
   manufacturerCommunications: number;
   complaintTrends?: string | null;
+  /** Live asking-price comparables currently listed (negotiation color). */
+  listingComps?: {
+    count: number;
+    low: number;
+    high: number;
+    average: number;
+    items: { title: string; price: number; url: string | null }[];
+  } | null;
+  /** The odometer reading the buyer entered at purchase (miles). */
+  buyerMileage?: number | null;
+  /**
+   * Locally computed value-vs-mileage band around the estimate — shows how
+   * mileage moves the price (negotiation ammo). Centered on buyerMileage.
+   */
+  valueByMileage?: { mileage: number; estimate: number }[];
+  /** NHTSA crash-test ratings for this model, when on file. */
+  safety?: SafetyRating | null;
+  /** EPA fuel economy for this model, when on file. */
+  fuelEconomy?: FuelEconomy | null;
 }
 
 /**
@@ -148,6 +200,21 @@ export interface VehicleHistory {
   owners?: number;
   auctionRecords: AuctionRecord[];
   serviceHistory: ServiceRecord[];
+  /** The report's own findings grid ("Severe Damage", "Warranty Voided"…). */
+  conditionFlags?: {
+    finding: string;
+    severity: 'Alert' | 'Warning' | 'Normal' | null;
+    note: string | null;
+    ownerGroup: number | null;
+  }[];
+  /** Per-owner profile — usage type only, never a person's identity (DPPA). */
+  ownerDetails?: {
+    owner: number | null;
+    purchasedYear: number | null;
+    type: string | null;
+    milesPerYear: number | null;
+    events: number | null;
+  }[];
 }
 
 /**
