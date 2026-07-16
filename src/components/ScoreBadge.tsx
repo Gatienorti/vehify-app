@@ -23,17 +23,20 @@ export default function ScoreBadge({
         : colors.scoreRed;
 
   return (
-    <View
-      style={[
-        styles.wrap,
-        { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, borderColor: colors.border },
-        premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
-      ]}
-    >
-      <View style={styles.row}>
+    <>
+      {/* Label OUTSIDE the card, styled like every other section header —
+          the band dot carries the color at a glance. */}
+      <View style={styles.header}>
         <View style={[styles.dot, { backgroundColor: color }]} />
-        <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
+        <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
       </View>
+      <View
+        style={[
+          styles.wrap,
+          { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, borderColor: colors.border },
+          premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
+        ]}
+      >
       <Text style={[styles.score, { color }]}>{score.score}<Text style={[styles.outOf, { color: colors.textMuted }]}>/100</Text></Text>
       {/* Multi-line reasons (one finding per line) render as a bullet list;
           a single-line reason stays plain prose. */}
@@ -49,16 +52,18 @@ export default function ScoreBadge({
           </Text>
         ));
       })()}
-    </View>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { borderWidth: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // Mirrors the report's section headers (18/800 + small gap above).
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  label: { fontSize: 13, fontWeight: '600' },
-  score: { fontSize: 44, fontWeight: '800', marginTop: 4 },
+  label: { fontSize: 18, fontWeight: '800' },
+  score: { fontSize: 44, fontWeight: '800' },
   outOf: { fontSize: 18, fontWeight: '600' },
   reason: { fontSize: 15, lineHeight: 21, marginTop: 4 },
 });

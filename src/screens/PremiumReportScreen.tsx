@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Activity,
   AlertTriangle,
   Bell,
   Car,
@@ -559,30 +558,9 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </>
         ) : null}
 
-        {/* v2.1 honesty split — the MODEL's track record, always present.
-            On premium it demotes to collapsed reference (the per-VIN Buy Score
-            above supersedes it) — unless the model itself is red. */}
-        {history ? (
-          <CollapsibleSection
-            title="Model Score"
-            icon={Activity}
-            summary={`${analysis.modelScore.score}/100`}
-            alert={analysis.modelScore.band === 'red'}
-            defaultOpen={analysis.modelScore.band === 'red'}
-          >
-            {analysis.modelScore.reason
-              .split('\n')
-              .filter((l) => l.trim() !== '')
-              .map((line) => (
-                <Text key={line} style={[styles.cardBody, { color: colors.text }]}>
-                  {'•  '}
-                  {line}
-                </Text>
-              ))}
-          </CollapsibleSection>
-        ) : (
-          <ScoreBadge score={analysis.modelScore} label="Model Score" />
-        )}
+        {/* v2.1 honesty split — the MODEL's track record, always present. On
+            premium it reads below the per-VIN block as supporting context. */}
+        <ScoreBadge score={analysis.modelScore} label="Model Score" />
 
         {/* The deal — ONLY when a verdict actually exists. Without a market
             value there is nothing to grade (the Value section already says
