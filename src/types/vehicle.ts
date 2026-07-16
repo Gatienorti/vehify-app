@@ -179,13 +179,25 @@ export interface BuyersAnalysis {
   /** Manufacturer communications (TSBs) on file. */
   manufacturerCommunications: number;
   complaintTrends?: string | null;
-  /** Live asking-price comparables currently listed (negotiation color). */
+  /**
+   * Comparable cars currently listed for sale (negotiation color) — a
+   * rolling snapshot refreshed every few days. Vendor-neutral: never name
+   * the marketplace source anywhere in the UI.
+   */
   listingComps?: {
     count: number;
     low: number;
     high: number;
     average: number;
-    items: { title: string; price: number; url: string | null }[];
+    items: {
+      title: string;
+      price: number;
+      /** Listed odometer reading (miles), when the listing declared one. */
+      mileage?: number | null;
+      /** Title status as listed (e.g. "Clean") — branded titles are filtered out upstream. */
+      titleStatus?: string | null;
+      url: string | null;
+    }[];
   } | null;
   /** The odometer reading the buyer entered at purchase (miles). */
   buyerMileage?: number | null;

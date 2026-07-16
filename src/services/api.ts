@@ -9,6 +9,9 @@ import type {
   BasicVehicleResponse,
   EmailLoginRequest,
   EmailRegisterRequest,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
+  ResetPasswordRequest,
   HistoryFeedItem,
   HistorySyncRequest,
   HistorySyncResponse,
@@ -127,6 +130,15 @@ export const api = createApi({
       query: (body) => ({ url: '/auth/login', method: 'POST', body }),
     }),
 
+    // Password reset by emailed 6-digit code.
+    forgotPassword: builder.mutation<ForgotPasswordResponse, ForgotPasswordRequest>({
+      query: (body) => ({ url: '/auth/forgot-password', method: 'POST', body }),
+    }),
+
+    resetPassword: builder.mutation<AuthResponse, ResetPasswordRequest>({
+      query: (body) => ({ url: '/auth/reset-password', method: 'POST', body }),
+    }),
+
     // Revoke the current device's token server-side (other devices stay in).
     logout: builder.mutation<LogoutResponse, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
@@ -185,6 +197,8 @@ export const {
   useSocialSignInMutation,
   useRegisterEmailMutation,
   useLoginEmailMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
   useLogoutMutation,
   useSyncHistoryMutation,
   useGetHistoryQuery,

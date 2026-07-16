@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AlertTriangle,
@@ -507,6 +507,38 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 Highlighted row is closest to your entered odometer reading.
               </Text>
             ) : null}
+          </Section>
+        ) : null}
+
+        {/* Comparable cars listed for sale right now — real asking prices with
+            odometer context (negotiation ammo). Vendor-neutral by design: the
+            marketplace source is never named. Auctions and branded-title cars
+            are filtered out server-side. */}
+        {analysis.listingComps?.items.length ? (
+          <Section title="Comparable listings" icon={Car}>
+            <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
+              {analysis.listingComps.count} similar{' '}
+              {analysis.listingComps.count === 1 ? 'car' : 'cars'} listed for sale right now,
+              asking ${analysis.listingComps.low.toLocaleString()}–$
+              {analysis.listingComps.high.toLocaleString()} (average $
+              {analysis.listingComps.average.toLocaleString()}). Asking prices, not sale prices.
+            </Text>
+            {analysis.listingComps.items.map((c, i) => (
+              <Pressable
+                key={`${i}-${c.price}`}
+                disabled={!c.url}
+                onPress={() => (c.url ? Linking.openURL(c.url) : undefined)}
+              >
+                <StatRow
+                  label={
+                    (c.mileage != null
+                      ? `${c.mileage.toLocaleString()} mi`
+                      : 'Mileage not listed') + (c.titleStatus ? ` · ${c.titleStatus} title` : '')
+                  }
+                  value={`$${c.price.toLocaleString()}`}
+                />
+              </Pressable>
+            ))}
           </Section>
         ) : null}
 

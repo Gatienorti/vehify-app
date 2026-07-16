@@ -2,9 +2,11 @@ import { useCallback, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { clearAuth, setAuth } from '../store/authSlice';
 import {
+  useForgotPasswordMutation,
   useLoginEmailMutation,
   useLogoutMutation,
   useRegisterEmailMutation,
+  useResetPasswordMutation,
   useSocialSignInMutation,
   useSyncHistoryMutation,
 } from '../services/api';
@@ -33,6 +35,8 @@ export function useAccount() {
   const [socialSignIn] = useSocialSignInMutation();
   const [registerEmail] = useRegisterEmailMutation();
   const [loginEmail] = useLoginEmailMutation();
+  const [forgotPasswordReq] = useForgotPasswordMutation();
+  const [resetPasswordReq] = useResetPasswordMutation();
   const [logout] = useLogoutMutation();
   const [syncHistory] = useSyncHistoryMutation();
   const [busy, setBusy] = useState(false);
@@ -86,6 +90,19 @@ export function useAccount() {
     [run, complete, loginEmail],
   );
 
+  // Request the emailed reset code (no auth change).
+  const forgotPassword = useCallback(
+    (email: string) => run(() => forgotPasswordReq({ email }).unwrap()),
+    [run, forgotPasswordReq],
+  );
+
+  // Complete the reset — the backend returns a fresh token, so it signs in.
+  const resetPassword = useCallback(
+    (req: { email: string; code: string; password: string }) =>
+      run(async () => complete(await resetPasswordReq(req).unwrap(), 'account_logged_in')),
+    [run, complete, resetPasswordReq],
+  );
+
   const signOut = useCallback(
     () =>
       run(async () => {
@@ -101,7 +118,7 @@ export function useAccount() {
     [run, logout, dispatch],
   );
 
-  return { user, isAuthenticated, signIn, register, login, signOut, busy };
+  return { user, isAuthenticated, signIn, register, login, forgotPassword, resetPassword, signOut, busy };
 }
 
 function toSyncItem(e: HistoryEntry): HistorySyncItem {
