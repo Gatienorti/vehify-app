@@ -56,6 +56,23 @@ const fullReport: ReportResponse = {
     complaintTrends: '47 owner complaints on file — most often about air bags.',
     manufacturerCommunications: 12,
     factoryEquipment: ['Heated front seats'],
+    // Comparable current listings (vendor-neutral) — 7-day rolling snapshot.
+    listingComps: {
+      count: 4,
+      low: 16995,
+      high: 23143,
+      average: 20528,
+      items: [
+        {
+          title: '2019 Toyota Camry XSE',
+          price: 18980,
+          mileage: 136323,
+          titleStatus: 'Clean',
+          url: 'https://example.com/itm/1',
+        },
+        { title: '2019 Toyota Camry LE', price: 16995, mileage: null, titleStatus: null, url: null },
+      ],
+    },
     photoUrls: [],
     safety: { overall: 5, front_crash: 5, side_crash: 5, rollover: 4 },
     fuelEconomy: { combined_mpg: 32, city_mpg: 28, highway_mpg: 39, annual_fuel_cost: 1650 },
