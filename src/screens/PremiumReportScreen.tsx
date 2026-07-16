@@ -19,6 +19,7 @@ import {
   Star,
   Tag,
   TrendingDown,
+  TrendingUp,
   Users,
   Wrench,
   Zap,
@@ -29,9 +30,10 @@ import VehicleCard from '../components/VehicleCard';
 import ScoreBadge from '../components/ScoreBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { useGetReportQuery, useRefreshReportMutation } from '../services/api';
+import { useGetReportQuery, useRefreshReportMutation, useRetryReportMutation } from '../services/api';
 import { PRICING, formatUsd } from '../config/pricing';
-import { REPORT_OPEN_MESSAGES } from '../config/loadingMessages';
+import { BUILDING_REPORT_MESSAGES, REPORT_OPEN_MESSAGES } from '../config/loadingMessages';
+import { isReportReady } from '../types/api';
 import {
   dealVerdictLabel,
   formatPriceDelta,
@@ -47,6 +49,12 @@ type Props = StackScreenProps<'PremiumReport'>;
 
 /** After this many days the report offers a (paid) content refresh. */
 const STALE_AFTER_DAYS = 30;
+
+/** Poll cadence while the backend's queued build runs (generation ≈ 6–18s). */
+const GENERATING_POLL_MS = 2500;
+
+/** Give up polling after this long — a stuck job must not spin the phone forever. */
+const GENERATING_CAP_MS = 90_000;
 
 function reportAgeDays(generatedAt: string | null | undefined): number | null {
   if (!generatedAt) return null;
@@ -267,13 +275,35 @@ function dedupeConditionFlags(
 export default function PremiumReportScreen({ navigation, route }: Props) {
   const { colors, spacing } = useTheme();
   const { vin, reportId, tier } = route.params;
+  // The backend builds report content on a queue: until it finishes, GET
+  // returns {status:'generating'} and we poll — the loading overlay stays up
+  // the whole time, exactly like the old synchronous confirm felt.
+  const [pollingInterval, setPollingInterval] = useState(0);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
   const { data, isLoading, isError, error, refetch } = useGetReportQuery(
     { id: reportId ?? `report-${vin}`, vin, tier },
+    { pollingInterval },
   );
   const [refreshReport, { isLoading: refreshing }] = useRefreshReportMutation();
+  const [retryReport, { isLoading: retrying }] = useRetryReportMutation();
   const [showAllMileage, setShowAllMileage] = useState(false);
   const [showClosedInvestigations, setShowClosedInvestigations] = useState(false);
   const [showRecalls, setShowRecalls] = useState(false);
+
+  const generating =
+    data !== undefined && !isReportReady(data) && data.status === 'generating' && !pollTimedOut;
+
+  // Start/stop the poll from what the server last said.
+  useEffect(() => {
+    setPollingInterval(generating ? GENERATING_POLL_MS : 0);
+  }, [generating]);
+
+  // Safety cap: if the build never lands, stop polling and offer a retry.
+  useEffect(() => {
+    if (!generating) return;
+    const timer = setTimeout(() => setPollTimedOut(true), GENERATING_CAP_MS);
+    return () => clearTimeout(timer);
+  }, [generating]);
 
   // Tier-aware header — "Vehicle history" was wrong for an analysis report.
   useEffect(() => {
@@ -310,14 +340,49 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
     );
   }
 
-  if (isLoading || !data) {
+  // The queued build burned its retries (or our poll cap hit). The purchase
+  // is safe — recovery is a FREE re-queue via /retry.
+  if (data !== undefined && !isReportReady(data) && (data.status === 'failed' || pollTimedOut)) {
+    const pendingId = data.id;
+    return (
+      <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>
+          Your report is taking longer than usual
+        </Text>
+        <Text style={[styles.errorBody, { color: colors.textMuted }]}>
+          Your purchase is safe — the records run hit a snag. Try again and we’ll rebuild it at no
+          extra charge.
+        </Text>
+        <PrimaryButton
+          label="Try again"
+          loading={retrying}
+          onPress={() => {
+            setPollTimedOut(false);
+            void retryReport({ id: pendingId });
+          }}
+          style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (isLoading || !data || !isReportReady(data)) {
+    // Still building server-side → the same overlay + rotating copy the buyer
+    // saw during purchase, riding on the poll instead of a held-open request.
+    const building = data !== undefined && !isReportReady(data);
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
         <LoadingOverlay
           visible
           dim={false}
-          title="Opening your report…"
-          messages={REPORT_OPEN_MESSAGES}
+          title={
+            building
+              ? tier === 'complete_history'
+                ? 'Adding the full history…'
+                : 'Building your analysis…'
+              : 'Opening your report…'
+          }
+          messages={building ? BUILDING_REPORT_MESSAGES : REPORT_OPEN_MESSAGES}
         />
       </SafeAreaView>
     );
@@ -408,12 +473,90 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" premium />
             ) : null}
             <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0} premium>
+              {/* The report's own badges — its official designations. */}
+              {history.highlights?.length ? (
+                <View style={[styles.flagChipWrap, styles.highlightWrap]}>
+                  {history.highlights.map((h) => (
+                    <View key={h} style={[styles.flagChip, { backgroundColor: `${colors.scoreGreen}1A` }]}>
+                      <Text style={[styles.flagChipText, { color: colors.scoreGreen }]}>{h}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               <StatRow label="Accidents reported" value={String(history.accidents)} bad={history.accidents > 0} />
               <StatRow label="Title brands" value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'} bad={history.titleBrands.length > 0} />
               <StatRow label="Theft records" value={String(history.thefts)} bad={history.thefts > 0} />
               <StatRow label="Odometer issues" value={String(history.odometerIssues)} bad={history.odometerIssues > 0} />
               <StatRow label="Owners" value={history.owners ? String(history.owners) : 'Unknown'} />
+              {history.locations?.length ? (
+                <StatRow label="Registered in" value={history.locations.join(', ')} />
+              ) : null}
+              {history.warranty ? <StatRow label="Warranty" value={history.warranty} /> : null}
+              {/* Per-VIN flag from the report itself — distinct from the
+                  model-level recall list further down. */}
+              {history.openRecallReported != null ? (
+                <StatRow
+                  label="Open recall on this car"
+                  value={history.openRecallReported ? 'Yes — not yet repaired' : 'None reported'}
+                  bad={history.openRecallReported}
+                />
+              ) : null}
+              {history.lienRecords?.length ? (
+                <>
+                  <StatRow
+                    label="Loan / lien reported"
+                    value={history.lienRecords.map((l) => l.date.slice(0, 4)).join(', ')}
+                  />
+                  <Text style={[styles.sourceNote, { color: colors.textMuted }]}>
+                    A loan or lien was reported — confirm it has been released before the title
+                    transfers to you.
+                  </Text>
+                </>
+              ) : null}
+              {history.autocheckScore ? (
+                <StatRow
+                  label="AutoCheck score"
+                  value={
+                    history.autocheckScore.rangeLow != null
+                      ? `${history.autocheckScore.score} (similar cars: ${history.autocheckScore.rangeLow}–${history.autocheckScore.rangeHigh ?? '?'})`
+                      : String(history.autocheckScore.score)
+                  }
+                  bad={
+                    history.autocheckScore.rangeLow != null &&
+                    history.autocheckScore.score < history.autocheckScore.rangeLow
+                  }
+                />
+              ) : null}
             </Section>
+
+            {/* The report's own valuation of this exact car + the history
+                events it says move the number — a second anchor beside our
+                market estimate, never mixed into the deal verdict. */}
+            {history.historyBasedValue ? (
+              <Section title="History-based value" icon={DollarSign} premium>
+                <StatRow
+                  label="Retail value (from its records)"
+                  value={`$${history.historyBasedValue.amount.toLocaleString()}`}
+                />
+                {history.historyBasedValue.events.map((e) => (
+                  <View key={e.label} style={styles.hbvEventRow}>
+                    {e.direction === 'down' ? (
+                      <TrendingDown size={15} color={colors.danger} strokeWidth={2.5} />
+                    ) : (
+                      <TrendingUp size={15} color={colors.scoreGreen} strokeWidth={2.5} />
+                    )}
+                    <Text
+                      style={[
+                        styles.hbvEventText,
+                        { color: e.direction === 'down' ? colors.danger : colors.text },
+                      ]}
+                    >
+                      {e.label}
+                    </Text>
+                  </View>
+                ))}
+              </Section>
+            ) : null}
 
             {/* The report's own findings — severity marks the DOT, not whole
                 paragraphs; red text is reserved for Alert-level findings. */}
@@ -508,13 +651,32 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             {/* Ownership timeline — usage patterns, never a person's identity. */}
             {history.ownerDetails?.length ? (
               <Section title="Ownership timeline" icon={Users} premium>
-                {history.ownerDetails.map((o) => (
-                  <StatRow
-                    key={`owner-${o.owner}`}
-                    label={`Owner ${o.owner ?? '?'}${o.purchasedYear ? ` · since ${o.purchasedYear}` : ''}${o.type ? ` · ${o.type}` : ''}`}
-                    value={o.events != null ? `${o.events} records` : '—'}
-                  />
-                ))}
+                {history.ownerDetails.map((o) => {
+                  const sub = [
+                    o.lengthOfOwnership ? `owned ${o.lengthOfOwnership}` : null,
+                    o.states?.length ? o.states.join(', ') : null,
+                    o.lastReportedOdometer
+                      ? `last reading ${o.lastReportedOdometer.toLocaleString()} mi`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    <View key={`owner-${o.owner}`} style={[styles.recordRow, { borderColor: colors.border }]}>
+                      <View style={styles.ownerRowTop}>
+                        <Text style={[styles.statLabel, { color: colors.textMuted }]}>
+                          {`Owner ${o.owner ?? '?'}${o.purchasedYear ? ` · since ${o.purchasedYear}` : ''}${o.type ? ` · ${o.type}` : ''}`}
+                        </Text>
+                        <Text style={[styles.statValue, { color: colors.text }]}>
+                          {o.events != null ? `${o.events} records` : '—'}
+                        </Text>
+                      </View>
+                      {sub ? (
+                        <Text style={[styles.ownerSub, { color: colors.textMuted }]}>{sub}</Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </Section>
             ) : null}
 
@@ -643,6 +805,14 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             <StatRow
               label="Estimated range"
               value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
+            />
+          ) : null}
+          {/* The history report's own valuation — an independent second
+              anchor next to ours; strong negotiation ammo when they agree. */}
+          {analysis.carfaxValue ? (
+            <StatRow
+              label="History-based retail value"
+              value={`$${analysis.carfaxValue.amount.toLocaleString()}`}
             />
           ) : null}
           {/* Real MSRP (carapi.app trims, ~2015–2020) — shown only when the
@@ -1010,6 +1180,11 @@ const styles = StyleSheet.create({
   flagOwner: { fontSize: 12.5, marginLeft: 'auto' },
   flagNote: { fontSize: 13.5, lineHeight: 19, marginTop: 6 },
   sevDot: { width: 9, height: 9, borderRadius: 5 },
+  highlightWrap: { marginTop: 2, paddingBottom: 6 },
+  hbvEventRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7 },
+  hbvEventText: { fontSize: 14, flexShrink: 1 },
+  ownerRowTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  ownerSub: { fontSize: 12.5, lineHeight: 17 },
   emptyLine: { fontSize: 13.5, lineHeight: 19 },
   reco: { fontSize: 16, lineHeight: 23 },
   body: { fontSize: 14, lineHeight: 20 },

@@ -28,7 +28,8 @@ import type {
   PurchaseConfirmResponse,
   PurchaseStartRequest,
   PurchaseStartResponse,
-  ReportResponse,
+  ReportFetchResponse,
+  ReportRequeuedResponse,
   SocialSignInRequest,
   SocialSignInResponse,
   VinLookupRequest,
@@ -101,15 +102,26 @@ export const api = createApi({
       invalidatesTags: ['Report', 'History', 'Purchases'],
     }),
 
-    getReport: builder.query<ReportResponse, { id: string; vin: string; tier: PaidTier }>({
+    // While the backend's queued build runs, this returns the small
+    // {status: 'generating'} payload — poll it (pollingInterval at the call
+    // site) until it flips to the full ready report.
+    getReport: builder.query<ReportFetchResponse, { id: string; vin: string; tier: PaidTier }>({
       query: (arg) => `/report/${arg.id}`,
       providesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),
 
     // Regenerate a stale report's content (offered via the "X days old"
-    // banner). Free while providers are mock/free.
-    refreshReport: builder.mutation<ReportResponse, { id: string }>({
+    // banner). Free while providers are mock/free. Queued: the response is
+    // the generating payload and the report polls back to ready.
+    refreshReport: builder.mutation<ReportRequeuedResponse, { id: string }>({
       query: (arg) => ({ url: `/report/${arg.id}/refresh`, method: 'POST' }),
+      invalidatesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
+    }),
+
+    // FREE recovery when a queued build ends in status:'failed' — re-queues
+    // the already-paid report's generation, never charges.
+    retryReport: builder.mutation<ReportRequeuedResponse, { id: string }>({
+      query: (arg) => ({ url: `/report/${arg.id}/retry`, method: 'POST' }),
       invalidatesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),
 
@@ -194,6 +206,7 @@ export const {
   useConfirmPurchaseMutation,
   useGetReportQuery,
   useRefreshReportMutation,
+  useRetryReportMutation,
   useSocialSignInMutation,
   useRegisterEmailMutation,
   useLoginEmailMutation,

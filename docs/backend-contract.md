@@ -72,8 +72,10 @@ buyers own their purchases/history; after sign-in (`Authorization: Bearer <sanct
 | Endpoint | Notes |
 |---|---|
 | `POST /report/purchase/start` `{vin, tier, productId, mileage?, askingPrice?}` | → `{purchaseToken}` (201). `tier`: `buyers_analysis` (default) or `complete_history`. **Ask the buyer for `mileage` (odometer) and `askingPrice` — they're standing at the car**; these personalize the valuation, power the deal verdict, the value-vs-mileage curve, and the rollback cross-check. Price already reflects the plate credit ($1.74). `complete_history` without an owned paid analysis for that VIN → **422** (it's upgrade-only). |
-| `POST /report/purchase/confirm` `{purchaseToken, tier, platform, appStoreTransactionId}` | Generates the report content → `{reportId, tier}`. |
-| `GET /report/{id}` | → `ReportResponse` (below). Ownership-gated. |
+| `POST /report/purchase/confirm` `{purchaseToken, tier, platform, appStoreTransactionId}` | Marks paid and **queues** the content build → `{reportId, tier, status}` instantly (`status`: `generating`\|`ready`\|`failed`). Poll `GET /report/{id}` until `ready`. Safe to re-fire (idempotent, never re-charges). |
+| `GET /report/{id}` | While the queued build runs → `{id, reportId, tier, vin, status: 'generating'\|'failed'}` (poll at ~2.5s). Once built → full `ReportResponse` (below) with `status: 'ready'`. Ownership-gated. |
+| `POST /report/{id}/retry` | **FREE** recovery when `status: 'failed'` — re-queues the already-paid build → `{reportId, id, tier, vin, status: 'generating'}`. 422 when there's nothing to retry (content exists / never paid). |
+| `POST /report/{id}/refresh` | Regenerate with current data (stale-report banner). Clears the content and re-queues → the same generating payload; poll like after a purchase. |
 
 ### Account
 | Endpoint | Notes |
