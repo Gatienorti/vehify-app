@@ -91,6 +91,11 @@ export default function ScanScreen({ navigation, route }: Props) {
   }, []);
   const frozen = frozenShot !== null || frozenFull !== null;
   const stateVotesRef = useRef<Map<string, number>>(new Map());
+  // Last time a VIN-less barcode decoded. Streams of those mean the camera is
+  // on a DOCUMENT (stickers/registrations are covered in barcodes; license
+  // plates never are) — plate proposals from document text ("M0T0R",
+  // "2008BMW") are suppressed while that signal is fresh.
+  const docBarcodeAtRef = useRef(0);
   const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); };
 
   // Pinch-to-zoom for the camera (0 = none … 1 = max). Helps read a distant plate.
@@ -245,7 +250,11 @@ export default function ScanScreen({ navigation, route }: Props) {
         if (plateReadsRef.current.length > 4) plateReadsRef.current.shift();
 
         const vote = voteOnReads(plateReadsRef.current);
-        if (vote && isAcceptableVote(vote, 2) && !handledRef.current) {
+        const onDocument = Date.now() - docBarcodeAtRef.current < 2500;
+        if (onDocument && vote && __DEV__) {
+          console.log(`[ScanScreen] plate "${vote.plate}" suppressed — document barcodes streaming`);
+        }
+        if (vote && isAcceptableVote(vote, 2) && !handledRef.current && !onDocument) {
           handledRef.current = true;
           // Winning state = most-voted across reads.
           let state: string | null = null;
@@ -387,7 +396,10 @@ export default function ScanScreen({ navigation, route }: Props) {
         const payload = result.data ?? '';
         console.log(`[barcode] ${result.type} -> ${vin ?? 'no VIN'} | ${payload.length} chars | FULL payload:\n${JSON.stringify(payload)}`);
       }
-      if (!vin) return;
+      if (!vin) {
+        docBarcodeAtRef.current = Date.now();
+        return;
+      }
       handledRef.current = true;
       track('vin_detected', { source: 'barcode' });
       // Freeze what the user is aiming at: barcodes decode off the live feed
