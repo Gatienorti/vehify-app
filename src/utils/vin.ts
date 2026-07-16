@@ -38,12 +38,18 @@ export function isValidVin(raw: string): boolean {
  * normalized VIN, or null if none is found.
  */
 export function extractVinFromBarcode(raw: string): string | null {
+  // AAMVA document barcodes (registration cards' PDF417): the VIN lives in
+  // the VH (vehicle) subfile under element tag "VAD" — parse the tag
+  // explicitly, checksum-verified. NEVER window-scan these blobs: with
+  // dozens of 17-char windows the ISO checksum (rejects only ~10/11)
+  // statistically guarantees a junk hit ("620042ZR02040015Z").
+  const aamva = raw.toUpperCase().match(/VAD([A-HJ-NPR-Z0-9]{17})/);
+  if (aamva && hasValidCheckDigit(aamva[1]!)) return aamva[1]!;
+
   const s = normalizeVin(raw);
-  // A real VIN barcode's payload IS the VIN (Tesla QR, door-jamb Code39 with
-  // 'I' wrappers) — a few chars of slack at most. Long payloads are DMV/AAMVA
-  // document blobs: they rarely contain the VIN, and with ~dozens of 17-char
-  // windows the ISO checksum (rejects only ~10/11) is statistically GUARANTEED
-  // to bless some junk slice ("620042ZR02040015Z"). Reject them outright.
+  // Otherwise a payload is only trusted when it IS a VIN (Tesla QR, door-jamb
+  // Code39 with 'I' wrappers) — a few chars of slack at most. Long non-AAMVA
+  // blobs are rejected outright, per the window-scan hazard above.
   if (s.length > 21) return null;
   if (isValidVin(s) && hasValidCheckDigit(s)) return s;
   for (let i = 0; i + 17 <= s.length; i++) {

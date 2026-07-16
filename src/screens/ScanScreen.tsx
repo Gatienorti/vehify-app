@@ -383,7 +383,8 @@ export default function ScanScreen({ navigation, route }: Props) {
         // Log EVERY decode — silence means the symbology never decoded at all
         // (blur/glare/too small), which needs different debugging than a
         // VIN-less payload (document barcodes carry control numbers).
-        console.log(`[barcode] ${result.type} -> ${vin ?? 'no VIN'} | payload: "${(result.data ?? '').slice(0, 60)}"`);
+        const payload = result.data ?? '';
+        console.log(`[barcode] ${result.type} -> ${vin ?? 'no VIN'} | ${payload.length} chars | FULL payload:\n${JSON.stringify(payload)}`);
       }
       if (!vin) return;
       handledRef.current = true;
