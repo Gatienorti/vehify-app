@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
   Lightbulb,
   Lock,
   ShieldAlert,
+  ShieldCheck,
   Star,
   Tag,
   TrendingDown,
@@ -35,6 +36,7 @@ import {
   formatPriceDelta,
   nearestMileageIndex,
   sentenceCase,
+  shortDate,
   valueBarWidthPct,
 } from '../utils/report';
 import type { StackScreenProps } from '../types/navigation';
@@ -79,18 +81,27 @@ function Section({
   title,
   icon,
   alert,
+  premium,
   children,
 }: {
   title: string;
   icon?: LucideIcon;
   alert?: boolean;
+  /** Complete-History (per-VIN) content — subtle brand accent, never severity colors. */
+  premium?: boolean;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();
   return (
     <>
       <SectionHeader title={title} icon={icon} alert={alert} />
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+          premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
+        ]}
+      >
         {children}
       </View>
     </>
@@ -107,12 +118,18 @@ function CollapsibleSection({
   icon: Icon,
   summary,
   defaultOpen = false,
+  alert,
+  premium,
   children,
 }: {
   title: string;
   icon?: LucideIcon;
   summary: string;
   defaultOpen?: boolean;
+  /** Danger-tint the icon — a collapsed section may still hold a problem. */
+  alert?: boolean;
+  /** Complete-History (per-VIN) content — subtle brand accent, never severity colors. */
+  premium?: boolean;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();
@@ -121,7 +138,7 @@ function CollapsibleSection({
   return (
     <>
       <Pressable onPress={() => setOpen((o) => !o)} style={styles.sectionHeader} hitSlop={8}>
-        {Icon ? <Icon size={17} color={colors.textMuted} strokeWidth={2.5} /> : null}
+        {Icon ? <Icon size={17} color={alert ? colors.danger : colors.textMuted} strokeWidth={2.5} /> : null}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
         <View style={styles.collapseRight}>
           <Text style={[styles.collapseSummary, { color: colors.textMuted }]}>{summary}</Text>
@@ -129,11 +146,37 @@ function CollapsibleSection({
         </View>
       </Pressable>
       {open ? (
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+            premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
+          ]}
+        >
           {children}
         </View>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Group banner for the Complete-History block: frames the per-VIN records as
+ * one premium unit ("what your upgrade unlocked"). Brand accent only — the
+ * severity palette stays reserved for actual findings.
+ */
+function PremiumGroupHeader() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.premiumGroup, { borderColor: colors.premium, backgroundColor: `${colors.premium}14` }]}>
+      <ShieldCheck size={18} color={colors.premium} strokeWidth={2.5} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.premiumGroupTitle, { color: colors.text }]}>Complete Vehicle History</Text>
+        <Text style={[styles.premiumGroupSub, { color: colors.textMuted }]}>
+          Records for this exact VIN
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -354,7 +397,169 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           ))}
         </View>
 
-        {/* v2.1 honesty split — the MODEL's track record, always present. */}
+        {/* Premium-first: what the +$3 unlocked leads the page — banner,
+            per-VIN Buy Score and this VIN's records. Model-level context
+            collapses below (open only while it holds an active finding). */}
+        {history ? (
+          <>
+            <PremiumGroupHeader />
+            {analysis.buyScore ? (
+              <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" premium />
+            ) : null}
+            <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0} premium>
+              <StatRow label="Accidents reported" value={String(history.accidents)} bad={history.accidents > 0} />
+              <StatRow label="Title brands" value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'} bad={history.titleBrands.length > 0} />
+              <StatRow label="Theft records" value={String(history.thefts)} bad={history.thefts > 0} />
+              <StatRow label="Odometer issues" value={String(history.odometerIssues)} bad={history.odometerIssues > 0} />
+              <StatRow label="Owners" value={history.owners ? String(history.owners) : 'Unknown'} />
+            </Section>
+
+            {/* The report's own findings — severity marks the DOT, not whole
+                paragraphs; red text is reserved for Alert-level findings. */}
+            {conditionFlags.length ? (
+              <Section title="Report red flags" icon={AlertTriangle} alert premium>
+                {conditionFlags.map((f, i) => {
+                  const sevColor =
+                    f.severity === 'Alert'
+                      ? colors.danger
+                      : f.severity === 'Warning'
+                        ? colors.warning
+                        : colors.textMuted;
+                  const noteItems =
+                    f.note && f.note.includes('|') ? f.note.split('|').map((s) => s.trim()) : null;
+                  return (
+                    <View key={`${f.finding}-${i}`} style={[styles.flagRow, { borderColor: colors.border }]}>
+                      <View style={styles.flagHeader}>
+                        <View style={[styles.sevDot, { backgroundColor: sevColor }]} />
+                        <Text
+                          style={[
+                            styles.flagTitle,
+                            { color: f.severity === 'Alert' ? colors.danger : colors.text },
+                          ]}
+                        >
+                          {f.finding}
+                        </Text>
+                        {f.ownerGroup ? (
+                          <Text style={[styles.flagOwner, { color: colors.textMuted }]}>
+                            Owner {f.ownerGroup}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {noteItems ? (
+                        <View style={styles.flagChipWrap}>
+                          {noteItems.map((item) => (
+                            <View key={item} style={[styles.flagChip, { backgroundColor: `${sevColor}1A` }]}>
+                              <Text style={[styles.flagChipText, { color: sevColor }]}>{item}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : f.note ? (
+                        <Text style={[styles.flagNote, { color: colors.textMuted }]}>{f.note}</Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </Section>
+            ) : null}
+
+            {/* Mileage & rollback — HISTORY-class data, gated on the complete_history
+                tier (history present), never on the analysis tier. We never fake a
+                timeline or claim a rollback check we didn't run. */}
+            {history && analysis.mileageHistory.length ? (
+              <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected} premium>
+                <StatRow
+                  label="Rollback check"
+                  value={
+                    analysis.rollbackDetected
+                      ? 'Discrepancy found'
+                      : // Absence of records is not a clean bill — only assert
+                        // "no issues" with enough readings to actually compare.
+                        analysis.mileageHistory.length >= 2
+                        ? 'No issues found'
+                        : 'Not enough readings to check'
+                  }
+                  bad={analysis.rollbackDetected}
+                />
+                {lastMileage && !showAllMileage ? (
+                  <StatRow
+                    label="Last reported"
+                    value={`${lastMileage.mileage.toLocaleString()} mi (${lastMileage.date})`}
+                  />
+                ) : null}
+                {showAllMileage
+                  ? analysis.mileageHistory.map((p, i) => (
+                      <StatRow key={`${i}-${p.date}`} label={p.date} value={`${p.mileage.toLocaleString()} mi`} />
+                    ))
+                  : null}
+                {analysis.mileageHistory.length > 1 ? (
+                  <ToggleRow
+                    label={
+                      showAllMileage
+                        ? 'Hide readings'
+                        : `Show all ${analysis.mileageHistory.length} readings`
+                    }
+                    onPress={() => setShowAllMileage((s) => !s)}
+                  />
+                ) : null}
+              </Section>
+            ) : null}
+
+            {/* Ownership timeline — usage patterns, never a person's identity. */}
+            {history.ownerDetails?.length ? (
+              <Section title="Ownership timeline" icon={Users} premium>
+                {history.ownerDetails.map((o) => (
+                  <StatRow
+                    key={`owner-${o.owner}`}
+                    label={`Owner ${o.owner ?? '?'}${o.purchasedYear ? ` · since ${o.purchasedYear}` : ''}${o.type ? ` · ${o.type}` : ''}`}
+                    value={o.events != null ? `${o.events} records` : '—'}
+                  />
+                ))}
+              </Section>
+            ) : null}
+
+            {/* Empty sections shrink to one muted line — no empty cards. */}
+            {history.auctionRecords.length ? (
+              <Section title="Auction history" icon={Gavel} premium>
+                {history.auctionRecords.map((a, i) => (
+                  <StatRow
+                    key={`${i}-${a.date}`}
+                    label={`${a.date}${a.location ? ` · ${a.location}` : ''}`}
+                    value={a.price ? `$${a.price.toLocaleString()}` : 'Sold'}
+                  />
+                ))}
+              </Section>
+            ) : (
+              <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
+                Auction history — no sales in available records.
+              </Text>
+            )}
+
+            {history.serviceHistory.length ? (
+              <CollapsibleSection
+                title="Service history"
+                icon={Wrench}
+                summary={`${history.serviceHistory.length} records`}
+                premium
+              >
+                {history.serviceHistory.map((s, i) => (
+                  <RecordRow
+                    key={`${i}-${s.date}`}
+                    meta={`${s.date}${s.mileage ? ` · ${s.mileage.toLocaleString()} mi` : ''}`}
+                    body={s.description}
+                  />
+                ))}
+              </CollapsibleSection>
+            ) : (
+              <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
+                Service history — no records in available sources. Common for private-party cars,
+                and not necessarily a bad sign.
+              </Text>
+            )}
+          </>
+        ) : null}
+
+        {/* v2.1 honesty split — the MODEL's track record, always present. On
+            premium it reads below the per-VIN block as supporting context. */}
         <ScoreBadge score={analysis.modelScore} label="Model Score" />
 
         {/* The deal — ONLY when a verdict actually exists. Without a market
@@ -387,12 +592,10 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </Text>
         </Section>
 
-        {/* Per-VIN verdict: real Buy Score on complete_history; on the
-            analysis tier it is honestly LOCKED — we haven't seen this VIN's
-            records yet, and that's the +$5 upsell. */}
-        {analysis.buyScore ? (
-          <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" />
-        ) : !history ? (
+        {/* Tier-3 only: the per-VIN Buy Score lives in the premium block on
+            complete_history; here it is honestly LOCKED — we haven't seen this
+            VIN's records yet, and that's the upgrade. */}
+        {!history ? (
           <View style={[styles.lockedCard, { backgroundColor: colors.surfaceAlt }]}>
             <View style={styles.lockedHeader}>
               <Lock size={18} color={colors.premium} strokeWidth={2.5} />
@@ -441,9 +644,14 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
             />
           ) : null}
-          {/* No MSRP/depreciation rows — no real data source exists for them
-              (CarAPI valuation is a single point value). Never show a
-              fabricated dollar claim. */}
+          {/* Real MSRP (carapi.app trims, ~2015–2020) — shown only when the
+              provider actually has it; hidden otherwise, never fabricated. */}
+          {analysis.msrp ? (
+            <StatRow label="Original MSRP" value={`$${analysis.msrp.toLocaleString()}`} />
+          ) : null}
+          {analysis.depreciationPct != null ? (
+            <StatRow label="Lost since new" value={`~${analysis.depreciationPct}%`} />
+          ) : null}
           {analysis.suggestedOffer ? (
             <StatRow label="Suggested offer" value={`$${analysis.suggestedOffer.toLocaleString()}`} />
           ) : null}
@@ -453,11 +661,57 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         </Section>
         )}
 
+        {/* Recent asking prices for comparable cars — REAL market evidence, so
+            it sits right after the value estimate to corroborate it (and when
+            no estimate exists, it IS the pricing signal). Accumulating pool:
+            each point stamped with its seen date; older ones age out server-
+            side at ~60 days. Vendor-neutral by design: the marketplace source
+            is never named. Auctions and branded-title cars are filtered out
+            server-side. */}
+        {analysis.listingComps?.items.length ? (
+          <Section title="Comparable listings" icon={Car}>
+            <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
+              {analysis.listingComps.count} recent asking{' '}
+              {analysis.listingComps.count === 1 ? 'price' : 'prices'} for similar cars: $
+              {analysis.listingComps.low.toLocaleString()}–$
+              {analysis.listingComps.high.toLocaleString()} (average $
+              {analysis.listingComps.average.toLocaleString()}).
+              {analysis.listingComps.count > analysis.listingComps.items.length
+                ? ` Newest ${analysis.listingComps.items.length} shown.`
+                : ''}{' '}
+              Asking prices, not sale prices — older listings may no longer be available.
+            </Text>
+            {analysis.listingComps.items.map((c, i) => (
+              <Pressable
+                key={`${i}-${c.price}`}
+                disabled={!c.url}
+                onPress={() => (c.url ? Linking.openURL(c.url) : undefined)}
+              >
+                <StatRow
+                  label={[
+                    c.mileage != null ? `${c.mileage.toLocaleString()} mi` : 'Mileage not listed',
+                    c.titleStatus ? `${c.titleStatus} title` : null,
+                    c.seenAt ? `seen ${shortDate(c.seenAt)}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  value={`$${c.price.toLocaleString()}`}
+                />
+              </Pressable>
+            ))}
+          </Section>
+        ) : null}
+
         {/* How mileage moves the price — negotiation ammo, no chart library.
             This is a projection from the single market estimate, NOT observed
             per-mile sale data, so it's labelled as an estimate up front. */}
         {curve.length ? (
-          <Section title="Value vs. mileage" icon={TrendingDown}>
+          <CollapsibleSection
+            title="Value vs. mileage"
+            icon={TrendingDown}
+            summary="estimate"
+            defaultOpen={!history}
+          >
             <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
               Estimated — projected from the current market value to show how
               mileage typically moves the price. Not per-mile sale data.
@@ -502,49 +756,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 Highlighted row is closest to your entered odometer reading.
               </Text>
             ) : null}
-          </Section>
-        ) : null}
-
-        {/* Mileage & rollback — HISTORY-class data, gated on the complete_history
-            tier (history present), never on the analysis tier. We never fake a
-            timeline or claim a rollback check we didn't run. */}
-        {history && analysis.mileageHistory.length ? (
-          <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected}>
-            <StatRow
-              label="Rollback check"
-              value={
-                analysis.rollbackDetected
-                  ? 'Discrepancy found'
-                  : // Absence of records is not a clean bill — only assert
-                    // "no issues" with enough readings to actually compare.
-                    analysis.mileageHistory.length >= 2
-                    ? 'No issues found'
-                    : 'Not enough readings to check'
-              }
-              bad={analysis.rollbackDetected}
-            />
-            {lastMileage && !showAllMileage ? (
-              <StatRow
-                label="Last reported"
-                value={`${lastMileage.mileage.toLocaleString()} mi (${lastMileage.date})`}
-              />
-            ) : null}
-            {showAllMileage
-              ? analysis.mileageHistory.map((p, i) => (
-                  <StatRow key={`${i}-${p.date}`} label={p.date} value={`${p.mileage.toLocaleString()} mi`} />
-                ))
-              : null}
-            {analysis.mileageHistory.length > 1 ? (
-              <ToggleRow
-                label={
-                  showAllMileage
-                    ? 'Hide readings'
-                    : `Show all ${analysis.mileageHistory.length} readings`
-                }
-                onPress={() => setShowAllMileage((s) => !s)}
-              />
-            ) : null}
-          </Section>
+          </CollapsibleSection>
         ) : null}
 
         {analysis.maintenanceOutlook ? (
@@ -556,10 +768,12 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {/* Federal defect investigations — open ones always visible; the
             closed pile folds away behind a count. */}
         {analysis.investigations ? (
-          <Section
+          <CollapsibleSection
             title="Federal defect investigations"
             icon={ShieldAlert}
             alert={analysis.investigations.open > 0}
+            summary={`${analysis.investigations.total} on file${analysis.investigations.open > 0 ? ` · ${analysis.investigations.open} open` : ''}`}
+            defaultOpen={!history || analysis.investigations.open > 0}
           >
             <StatRow label="On file for this model" value={String(analysis.investigations.total)} />
             <StatRow
@@ -600,13 +814,15 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 onPress={() => setShowClosedInvestigations((s) => !s)}
               />
             ) : null}
-          </Section>
+          </CollapsibleSection>
         ) : null}
 
-        <Section
+        <CollapsibleSection
           title="Recalls & manufacturer records"
           icon={Bell}
           alert={analysis.openRecalls.length > 0}
+          summary={`${analysis.openRecalls.length} open`}
+          defaultOpen={!history || analysis.openRecalls.length > 0}
         >
           <StatRow
             label="Open recalls"
@@ -636,11 +852,16 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           {analysis.complaintTrends ? (
             <Text style={[styles.cardBody, { color: colors.textMuted }]}>{analysis.complaintTrends}</Text>
           ) : null}
-        </Section>
+        </CollapsibleSection>
 
         {/* NHTSA crash-test ratings for this model, when on file. */}
         {analysis.safety ? (
-          <Section title="Crash safety (NHTSA)" icon={Star}>
+          <CollapsibleSection
+            title="Crash safety (NHTSA)"
+            icon={Star}
+            summary={`${Math.max(0, Math.min(5, analysis.safety.overall))}/5 overall`}
+            defaultOpen={!history}
+          >
             {(() => {
               const overall = Math.max(0, Math.min(5, analysis.safety.overall));
               return (
@@ -659,12 +880,17 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             {analysis.safety.rollover ? (
               <StatRow label="Rollover" value={`${analysis.safety.rollover}/5`} />
             ) : null}
-          </Section>
+          </CollapsibleSection>
         ) : null}
 
         {/* EPA fuel economy — snake_case fields are contract-accurate. */}
         {analysis.fuelEconomy ? (
-          <Section title="Fuel economy (EPA)" icon={Fuel}>
+          <CollapsibleSection
+            title="Fuel economy (EPA)"
+            icon={Fuel}
+            summary={`${analysis.fuelEconomy.combined_mpg} MPG combined`}
+            defaultOpen={!history}
+          >
             <StatRow label="Combined" value={`${analysis.fuelEconomy.combined_mpg} MPG`} />
             {analysis.fuelEconomy.city_mpg && analysis.fuelEconomy.highway_mpg ? (
               <StatRow
@@ -681,120 +907,9 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             {analysis.fuelEconomy.co2_gpm ? (
               <StatRow label="CO₂ emissions" value={`${analysis.fuelEconomy.co2_gpm} g/mi`} />
             ) : null}
-          </Section>
+          </CollapsibleSection>
         ) : null}
 
-        {/* Vehicle History — only on the complete_history tier. */}
-        {history ? (
-          <>
-            <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0}>
-              <StatRow label="Accidents reported" value={String(history.accidents)} bad={history.accidents > 0} />
-              <StatRow label="Title brands" value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'} bad={history.titleBrands.length > 0} />
-              <StatRow label="Theft records" value={String(history.thefts)} bad={history.thefts > 0} />
-              <StatRow label="Odometer issues" value={String(history.odometerIssues)} bad={history.odometerIssues > 0} />
-              <StatRow label="Owners" value={history.owners ? String(history.owners) : 'Unknown'} />
-            </Section>
-
-            {/* The report's own findings — severity marks the DOT, not whole
-                paragraphs; red text is reserved for Alert-level findings. */}
-            {conditionFlags.length ? (
-              <Section title="Report red flags" icon={AlertTriangle} alert>
-                {conditionFlags.map((f, i) => {
-                  const sevColor =
-                    f.severity === 'Alert'
-                      ? colors.danger
-                      : f.severity === 'Warning'
-                        ? colors.warning
-                        : colors.textMuted;
-                  const noteItems =
-                    f.note && f.note.includes('|') ? f.note.split('|').map((s) => s.trim()) : null;
-                  return (
-                    <View key={`${f.finding}-${i}`} style={[styles.flagRow, { borderColor: colors.border }]}>
-                      <View style={styles.flagHeader}>
-                        <View style={[styles.sevDot, { backgroundColor: sevColor }]} />
-                        <Text
-                          style={[
-                            styles.flagTitle,
-                            { color: f.severity === 'Alert' ? colors.danger : colors.text },
-                          ]}
-                        >
-                          {f.finding}
-                        </Text>
-                        {f.ownerGroup ? (
-                          <Text style={[styles.flagOwner, { color: colors.textMuted }]}>
-                            Owner {f.ownerGroup}
-                          </Text>
-                        ) : null}
-                      </View>
-                      {noteItems ? (
-                        <View style={styles.flagChipWrap}>
-                          {noteItems.map((item) => (
-                            <View key={item} style={[styles.flagChip, { backgroundColor: `${sevColor}1A` }]}>
-                              <Text style={[styles.flagChipText, { color: sevColor }]}>{item}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : f.note ? (
-                        <Text style={[styles.flagNote, { color: colors.textMuted }]}>{f.note}</Text>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </Section>
-            ) : null}
-
-            {/* Ownership timeline — usage patterns, never a person's identity. */}
-            {history.ownerDetails?.length ? (
-              <Section title="Ownership timeline" icon={Users}>
-                {history.ownerDetails.map((o) => (
-                  <StatRow
-                    key={`owner-${o.owner}`}
-                    label={`Owner ${o.owner ?? '?'}${o.purchasedYear ? ` · since ${o.purchasedYear}` : ''}${o.type ? ` · ${o.type}` : ''}`}
-                    value={o.events != null ? `${o.events} records` : '—'}
-                  />
-                ))}
-              </Section>
-            ) : null}
-
-            {/* Empty sections shrink to one muted line — no empty cards. */}
-            {history.auctionRecords.length ? (
-              <Section title="Auction history" icon={Gavel}>
-                {history.auctionRecords.map((a, i) => (
-                  <StatRow
-                    key={`${i}-${a.date}`}
-                    label={`${a.date}${a.location ? ` · ${a.location}` : ''}`}
-                    value={a.price ? `$${a.price.toLocaleString()}` : 'Sold'}
-                  />
-                ))}
-              </Section>
-            ) : (
-              <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
-                Auction history — no sales in available records.
-              </Text>
-            )}
-
-            {history.serviceHistory.length ? (
-              <CollapsibleSection
-                title="Service history"
-                icon={Wrench}
-                summary={`${history.serviceHistory.length} records`}
-              >
-                {history.serviceHistory.map((s, i) => (
-                  <RecordRow
-                    key={`${i}-${s.date}`}
-                    meta={`${s.date}${s.mileage ? ` · ${s.mileage.toLocaleString()} mi` : ''}`}
-                    body={s.description}
-                  />
-                ))}
-              </CollapsibleSection>
-            ) : (
-              <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
-                Service history — no records in available sources. Common for private-party cars,
-                and not necessarily a bad sign.
-              </Text>
-            )}
-          </>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -804,6 +919,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   card: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4 },
+  premiumGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginTop: 8 },
+  premiumGroupTitle: { fontSize: 15, fontWeight: '700' },
+  premiumGroupSub: { fontSize: 12, marginTop: 1 },
   cardBody: { fontSize: 14, lineHeight: 20, paddingVertical: 12 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   statLabel: { fontSize: 15, flexShrink: 0 },

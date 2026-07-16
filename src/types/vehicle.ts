@@ -11,6 +11,10 @@ export interface Vehicle {
   driveType?: string;
   fuelType?: string;
   manufacturer?: string;
+  /** Numeric specs (free from NHTSA vPIC) — absent when the decode lacks them. */
+  horsepower?: number;
+  doors?: number;
+  seats?: number;
 }
 
 /** Where a lookup result came from — drives free-refresh rules (spec §9, §10). */
@@ -107,10 +111,10 @@ export interface ServiceRecord {
 /**
  * Buyer's Analysis — "should I buy this vehicle?" (Report Tiers v2, tier 3).
  * Included with both paid tiers. Field list mirrors the tiers PDF: score,
- * recommendation, market value (a single point estimate — no MSRP/depreciation
- * source exists, so we never claim them), offer + negotiation, mileage +
- * rollback, maintenance outlook, factory equipment, photos, recalls, TSBs,
- * complaint trends.
+ * recommendation, market value (a single point estimate), MSRP + depreciation
+ * when the free trims dataset covers the trim (~2015–2020, else null), offer +
+ * negotiation, mileage + rollback, maintenance outlook, factory equipment,
+ * photos, recalls, TSBs, complaint trends.
  */
 export interface BuyersAnalysis {
   /**
@@ -154,8 +158,14 @@ export interface BuyersAnalysis {
    */
   valueLow?: number | null;
   valueHigh?: number | null;
-  /* No msrp/depreciation: CarAPI valuation is a single number and no real
-     MSRP/depreciation source is wired — never fabricate a checkable claim. */
+  /**
+   * Original MSRP (sticker) for the matched trim — REAL data from the free
+   * carapi.app trims dataset, per-trim, roughly model years 2015–2020; null
+   * outside that coverage. A checkable dollar claim, so only render when present.
+   */
+  msrp?: number | null;
+  /** Percent of MSRP lost since new (0–100), derived from msrp vs estimate. */
+  depreciationPct?: number | null;
   /** AI-suggested offer to make. */
   suggestedOffer?: number | null;
   negotiationAdvice?: string | null;
@@ -169,13 +179,31 @@ export interface BuyersAnalysis {
   /** Manufacturer communications (TSBs) on file. */
   manufacturerCommunications: number;
   complaintTrends?: string | null;
-  /** Live asking-price comparables currently listed (negotiation color). */
+  /**
+   * Recent asking prices for comparable cars (negotiation color) — an
+   * accumulating pool refreshed every few days (older points age out at
+   * ~60 days), each stamped with the date it was seen so nothing pretends
+   * to be more current than it is. Vendor-neutral: never name the
+   * marketplace source anywhere in the UI.
+   */
   listingComps?: {
     count: number;
     low: number;
     high: number;
     average: number;
-    items: { title: string; price: number; url: string | null }[];
+    /** ISO date of the newest data point in the pool. */
+    asOf?: string | null;
+    items: {
+      title: string;
+      price: number;
+      /** Listed odometer reading (miles), when the listing declared one. */
+      mileage?: number | null;
+      /** Title status as listed (e.g. "Clean") — branded titles are filtered out upstream. */
+      titleStatus?: string | null;
+      /** ISO date this asking price was observed. */
+      seenAt?: string | null;
+      url: string | null;
+    }[];
   } | null;
   /** The odometer reading the buyer entered at purchase (miles). */
   buyerMileage?: number | null;

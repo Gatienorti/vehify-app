@@ -129,6 +129,22 @@ export interface EmailLoginRequest {
   password: string;
 }
 
+/** Request a password-reset code by email. */
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+}
+
+/** Complete a reset with the emailed 6-digit code + a new password. */
+export interface ResetPasswordRequest {
+  email: string;
+  code: string;
+  password: string;
+}
+
 /**
  * POST /history/sync — claim anonymous device activity onto the account and
  * copy the local history up. `deviceId` is also sent as X-Device-Id; the

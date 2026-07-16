@@ -41,6 +41,9 @@ const fullReport: ReportResponse = {
     estimatedValue: 17800,
     valueLow: 16376,
     valueHigh: 19224,
+    // Real MSRP (carapi.app trims, ~2015–2020); null outside that coverage.
+    msrp: 27400,
+    depreciationPct: 35,
     suggestedOffer: 16020,
     buyerMileage: 78200,
     valueByMileage: [
@@ -53,6 +56,33 @@ const fullReport: ReportResponse = {
     complaintTrends: '47 owner complaints on file — most often about air bags.',
     manufacturerCommunications: 12,
     factoryEquipment: ['Heated front seats'],
+    // Recent asking prices (vendor-neutral) — accumulating pool, refreshed
+    // every ~7 days, points age out at ~60; each stamped with its seen date.
+    listingComps: {
+      count: 4,
+      low: 16995,
+      high: 23143,
+      average: 20528,
+      asOf: '2026-07-16',
+      items: [
+        {
+          title: '2019 Toyota Camry XSE',
+          price: 18980,
+          mileage: 136323,
+          titleStatus: 'Clean',
+          seenAt: '2026-07-16',
+          url: 'https://example.com/itm/1',
+        },
+        {
+          title: '2019 Toyota Camry LE',
+          price: 16995,
+          mileage: null,
+          titleStatus: null,
+          seenAt: '2026-07-09',
+          url: null,
+        },
+      ],
+    },
     photoUrls: [],
     safety: { overall: 5, front_crash: 5, side_crash: 5, rollover: 4 },
     fuelEconomy: { combined_mpg: 32, city_mpg: 28, highway_mpg: 39, annual_fuel_cost: 1650 },

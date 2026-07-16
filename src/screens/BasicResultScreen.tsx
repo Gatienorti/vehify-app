@@ -104,7 +104,10 @@ export default function BasicResultScreen({ navigation, route }: Props) {
           {(
             [
               ['Body style', data.vehicle.bodyStyle],
+              ['Doors', data.vehicle.doors ? String(data.vehicle.doors) : undefined],
+              ['Seats', data.vehicle.seats ? String(data.vehicle.seats) : undefined],
               ['Engine', data.vehicle.engine],
+              ['Horsepower', data.vehicle.horsepower ? `${data.vehicle.horsepower} hp` : undefined],
               ['Transmission', data.vehicle.transmission],
               ['Drive type', data.vehicle.driveType],
               ['Fuel type', data.vehicle.fuelType],
