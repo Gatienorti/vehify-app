@@ -11,6 +11,13 @@ import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'VehicleMatch'>;
 
+/**
+ * Refresh is only offered once the cached mapping is this old — younger rows
+ * would be served cache-only by the backend anyway (its month gate), because
+ * a live re-ask on a recently verified plate returns the same answer.
+ */
+const REFRESH_AFTER_DAYS = 30;
+
 /** Confirmation screen after a plate lookup (spec §10). Always shown. */
 export default function VehicleMatchScreen({ navigation, route }: Props) {
   const { colors, spacing } = useTheme();
@@ -18,6 +25,11 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
   const [refreshPlate, { isLoading }] = useRefreshPlateMutation();
   const recordLookup = useRecordLookup();
   const fromCache = result.source === 'cache';
+  const verifiedAtMs = result.lastVerifiedAt ? new Date(result.lastVerifiedAt).getTime() : NaN;
+  const staleEnough = Number.isNaN(verifiedAtMs)
+    ? true // unknown age — let the backend's gate decide
+    : Date.now() - verifiedAtMs >= REFRESH_AFTER_DAYS * 86_400_000;
+  const canRefresh = fromCache && staleEnough;
   // Already-owned report for this VIN → confirming the match goes straight to
   // the report; the basic page would only offer "View your report" anyway.
   // Ownership comes from the SERVER (source of truth) — never the local cache,
@@ -54,18 +66,18 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
     navigation.navigate('Tabs', { screen: 'Scan', params: { openVinEntry: true } });
   };
 
-  // Rejection means different things by source (spec §9, §10):
-  // - cache → likely OUR data is stale: one free live re-fetch.
-  // - live  → the state's CURRENT record disagrees with the car in front of
-  //   the user. That's a genuine caution sign (transferred plate, or the car
-  //   isn't what it's presented as) — warn plainly but hedged (never "Danger"
-  //   on unconfirmed data), then steer to the exact, free VIN check.
+  // Rejection means different things by data age (spec §9, §10):
+  // - stale cache (30+ days) → likely OUR data lags: one free live re-fetch.
+  // - live or recently verified → the CURRENT record disagrees with the car
+  //   in front of the user. That's a genuine caution sign (transferred plate,
+  //   or the car isn't what it's presented as) — warn plainly but hedged
+  //   (never "Danger" on unconfirmed data), then steer to the free VIN check.
   const reject = async () => {
     track('vehicle_rejected');
-    if (!fromCache) {
+    if (!canRefresh) {
       Alert.alert(
         'Plate doesn’t match the car?',
-        'The state’s current plate record points to the vehicle shown. If the car in front of you is different, the plate may have been transferred — or the car may not be what it’s presented as. Before going further, check the VIN printed at the base of the windshield or on the driver-door jamb. A VIN lookup is free and exact.',
+        'A recent check of the state’s plate record points to the vehicle shown. If the car in front of you is different, the plate may have been transferred — or the car may not be what it’s presented as. Before going further, check the VIN printed at the base of the windshield or on the driver-door jamb. A VIN lookup is free and exact.',
         [
           { text: 'Enter VIN — free', onPress: goToVinEntry },
           { text: 'Back', style: 'cancel' },
@@ -107,12 +119,12 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
 
         <PrimaryButton label="Yes, continue" onPress={confirm} />
         <PrimaryButton
-          label={fromCache ? 'No, refresh' : 'Not my car — enter VIN (free)'}
+          label={canRefresh ? 'No, refresh' : 'Not my car — enter VIN (free)'}
           variant="secondary"
           loading={isLoading}
           onPress={reject}
         />
-        {fromCache ? (
+        {canRefresh ? (
           <PrimaryButton label="Enter VIN instead" variant="ghost" onPress={goToVinEntry} />
         ) : null}
       </ScrollView>
