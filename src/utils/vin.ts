@@ -47,15 +47,14 @@ export function extractVinFromBarcode(raw: string): string | null {
   if (aamva && hasValidCheckDigit(aamva[1]!)) return aamva[1]!;
 
   const s = normalizeVin(raw);
-  // Otherwise a payload is only trusted when it IS a VIN (Tesla QR, door-jamb
-  // Code39 with 'I' wrappers) — a few chars of slack at most. Long non-AAMVA
-  // blobs are rejected outright, per the window-scan hazard above.
-  if (s.length > 21) return null;
+  // Otherwise a payload is only trusted when it IS a VIN. Exactly 17 chars,
+  // or 17 after stripping known symbology wrappers from the ENDS (Code 39
+  // transmits its start/stop guards as 'I' or '*'). NEVER window-scan — an
+  // 18-char sticker doc-number ("40805611116ELU3950") has two 17-char windows
+  // and the checksum blessed one of them in the field.
   if (isValidVin(s) && hasValidCheckDigit(s)) return s;
-  for (let i = 0; i + 17 <= s.length; i++) {
-    const w = s.slice(i, i + 17);
-    if (isValidVin(w) && hasValidCheckDigit(w)) return w;
-  }
+  const stripped = s.replace(/^[I*]+/, '').replace(/[I*]+$/, '');
+  if (isValidVin(stripped) && hasValidCheckDigit(stripped)) return stripped;
   return null;
 }
 

@@ -51,12 +51,16 @@ describe('vin', () => {
       expect(extractVinFromBarcode(payload)).toBe('7SAYGDEE6PA163838');
     });
 
-    it('never window-scans long non-AAMVA blobs (checksum-lucky junk)', () => {
-      // Same payload with the VAD element stripped: the lucky header window
-      // must NOT surface, even though it passes the check digit.
+    it('never window-scans non-AAMVA payloads (checksum-lucky junk)', () => {
+      // Long blob: the lucky header window must NOT surface, even though it
+      // passes the check digit.
       expect(
         extractVinFromBarcode('@\nXXDATA36001005VH00670058RG01250037ZV01620042ZR02040015ZZ0'),
       ).toBeNull();
+      // Real field case: an 18-char sticker doc-number whose 17-char window
+      // "40805611116ELU395" passes the checksum by luck. Only exact-17 (or
+      // wrapper-stripped exact-17) payloads are VINs.
+      expect(extractVinFromBarcode('40805611116ELU3950')).toBeNull();
     });
 
     it('returns null when there is no valid VIN', () => {
