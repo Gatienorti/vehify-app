@@ -35,10 +35,12 @@ export default function HistoryScreen({ navigation }: Props) {
   const localEntries = useAppSelector((s) => s.history.entries);
   const entries = data ?? localEntries;
 
-  // Settle gate: on every landing, hold a spinner until the fresh server feed
-  // is in (min SETTLE_MIN_MS) — rendering local data first and swapping to the
-  // server's version mid-look reads as a flicker of reordering/badge changes.
+  // Settle gate — COLD landings only (no server feed cached yet): painting the
+  // local cache first and swapping to the server's version a beat later reads
+  // as a flicker of reordering/badge changes. Once the query cache is warm,
+  // returns render instantly from it and the focus refetch updates silently.
   const [settled, setSettled] = useState(false);
+  const gated = !settled && data === undefined;
   useFocusEffect(
     useCallback(() => {
       setSettled(false);
@@ -65,7 +67,7 @@ export default function HistoryScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <Text style={[styles.header, { color: colors.text, paddingHorizontal: spacing.lg }]}>History</Text>
-      {!settled ? (
+      {gated ? (
         <View style={styles.empty}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
