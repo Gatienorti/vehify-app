@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import {
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -80,11 +82,16 @@ export default function ScanConfirmSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <Pressable style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onCancel} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.avoider}
+        pointerEvents="box-none"
+      >
       <View style={[styles.sheet, { backgroundColor: colors.surface, padding: spacing.lg, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}>
         <View style={styles.grabber} />
         <Text style={[styles.title, { color: colors.text }]}>Confirm the plate</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Check the read — tap to fix anything before searching.
+          Confirm the plate and state before searching.
         </Text>
 
         <View style={[styles.plateBox, { borderColor: colors.border, borderRadius: radius.md, marginTop: spacing.md }]}>
@@ -115,10 +122,7 @@ export default function ScanConfirmSheet({
         ) : null}
 
         <Text style={[styles.costNote, { color: colors.textMuted, marginTop: spacing.md }]}>
-          Plate lookups cost {formatUsd(PRICING.plateLookup)} — credited toward
-          your Buyer&apos;s Analysis. Occasionally a plate points to a different
-          vehicle — plates get transferred — so you&apos;ll confirm the match
-          before anything else. VIN lookups are free and exact.
+          Credited toward your Buyer&apos;s Analysis. VIN lookups are free and exact.
         </Text>
 
         <PrimaryButton
@@ -131,6 +135,7 @@ export default function ScanConfirmSheet({
           <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel &amp; keep scanning</Text>
         </Pressable>
       </View>
+      </KeyboardAvoidingView>
 
       <Modal visible={statePickerOpen} animationType="slide" onRequestClose={() => setStatePickerOpen(false)}>
         <View style={[styles.stateList, { backgroundColor: colors.background }]}>
@@ -158,7 +163,8 @@ export default function ScanConfirmSheet({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1 },
-  sheet: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: 36 },
+  avoider: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  sheet: { paddingBottom: 36 },
   grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: '#9993', marginBottom: 8 },
   title: { fontSize: 20, fontWeight: '700' },
   subtitle: { fontSize: 14, marginTop: 4 },

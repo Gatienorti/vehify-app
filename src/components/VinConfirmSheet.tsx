@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -60,6 +62,11 @@ export default function VinConfirmSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <Pressable style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onCancel} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.avoider}
+        pointerEvents="box-none"
+      >
       <View style={[styles.sheet, { backgroundColor: colors.surface, padding: spacing.lg, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}>
         <View style={styles.grabber} />
         <Text style={[styles.title, { color: colors.text }]}>Confirm the VIN</Text>
@@ -97,6 +104,7 @@ export default function VinConfirmSheet({
           <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel &amp; keep scanning</Text>
         </Pressable>
       </View>
+      </KeyboardAvoidingView>
 
       <LoadingOverlay visible={submitting} title="Decoding this VIN…" messages={VIN_DECODE_MESSAGES} />
     </Modal>
@@ -105,7 +113,8 @@ export default function VinConfirmSheet({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1 },
-  sheet: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: 36 },
+  avoider: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  sheet: { paddingBottom: 36 },
   grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: '#9993', marginBottom: 8 },
   title: { fontSize: 20, fontWeight: '700' },
   subtitle: { fontSize: 14, marginTop: 4 },
