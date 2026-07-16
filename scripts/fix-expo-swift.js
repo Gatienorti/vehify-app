@@ -67,3 +67,37 @@ if (fs.existsSync(mlkitGradle)) {
     console.log('[fix-expo-swift] mlkit-ocr: jcenter() -> mavenCentral()');
   }
 }
+
+// ── react-native-mlkit-ocr iOS: GoogleMLKit 2.6.0 (2021) pins
+// GTMSessionFetcher ~>1.1, which clashes with the Google Sign-In SDK (needs
+// 3.x). Bump to a current GoogleMLKit and adapt the one API call that changed
+// (the no-arg +textRecognizer was replaced by +textRecognizerWithOptions:).
+const mlkitPodspec = path.join(
+  __dirname, '..', 'node_modules', 'react-native-mlkit-ocr', 'react-native-mlkit-ocr.podspec',
+);
+if (fs.existsSync(mlkitPodspec)) {
+  const src = fs.readFileSync(mlkitPodspec, 'utf8');
+  if (src.includes('"GoogleMLKit/TextRecognition", "2.6.0"')) {
+    fs.writeFileSync(
+      mlkitPodspec,
+      src.replace('"GoogleMLKit/TextRecognition", "2.6.0"', '"GoogleMLKit/TextRecognition", "~> 7.0"'),
+    );
+    console.log('[fix-expo-swift] mlkit-ocr: GoogleMLKit 2.6.0 -> ~>7.0');
+  }
+}
+const mlkitObjc = path.join(
+  __dirname, '..', 'node_modules', 'react-native-mlkit-ocr', 'ios', 'MlkitOcr.m',
+);
+if (fs.existsSync(mlkitObjc)) {
+  const src = fs.readFileSync(mlkitObjc, 'utf8');
+  if (src.includes('[MLKTextRecognizer textRecognizer]')) {
+    fs.writeFileSync(
+      mlkitObjc,
+      src.replace(
+        /\[MLKTextRecognizer textRecognizer\]/g,
+        '[MLKTextRecognizer textRecognizerWithOptions:[[MLKTextRecognitionOptions alloc] init]]',
+      ),
+    );
+    console.log('[fix-expo-swift] mlkit-ocr: textRecognizer -> textRecognizerWithOptions:');
+  }
+}
