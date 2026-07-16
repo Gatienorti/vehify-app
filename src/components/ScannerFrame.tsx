@@ -18,10 +18,15 @@ function Corner({ style }: { style: object }) {
   return <View style={[styles.corner, style]} />;
 }
 
-export default function ScannerFrame() {
+export default function ScannerFrame({ paused = false }: { paused?: boolean }) {
   const [anim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
+    // Frozen on a captured shot → no sweep; the moment is over, hold still.
+    if (paused) {
+      anim.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(anim, {
@@ -35,7 +40,7 @@ export default function ScannerFrame() {
     );
     loop.start();
     return () => loop.stop();
-  }, [anim]);
+  }, [anim, paused]);
 
   const translateY = anim.interpolate({
     inputRange: [0, 1],

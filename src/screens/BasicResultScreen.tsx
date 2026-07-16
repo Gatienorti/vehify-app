@@ -47,9 +47,9 @@ export default function BasicResultScreen({ navigation, route }: Props) {
 
   // Purchase runs right here (sheet stays up with the building overlay);
   // success rebuilds the stack as Tabs → Report so back lands on Scan.
-  const buyAnalysis = async (mileage: number | undefined, askingPrice: number | undefined) => {
+  const buyAnalysis = async (mileage: number | undefined, askingPrice: number | undefined, zip?: string) => {
     try {
-      const confirm = await buy(vin, 'buyers_analysis', { mileage, askingPrice, hasPlateCredit });
+      const confirm = await buy(vin, 'buyers_analysis', { mileage, askingPrice, zip, hasPlateCredit });
       navigation.reset({
         index: 1,
         routes: [
@@ -62,7 +62,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
         'Purchase didn’t complete',
         'You haven’t been charged. Check your connection and try again.',
         [
-          { text: 'Try again', onPress: () => void buyAnalysis(mileage, askingPrice) },
+          { text: 'Try again', onPress: () => void buyAnalysis(mileage, askingPrice, zip) },
           { text: 'Not now', style: 'cancel' },
         ],
       );
@@ -193,8 +193,10 @@ export default function BasicResultScreen({ navigation, route }: Props) {
         visible={buySheetOpen}
         price={buyersAnalysisPrice(hasPlateCredit)}
         submitting={buying}
+        // EV/plug-in: the sheet adds a ZIP field (charging density on the report).
+        isElectric={/electric|plug-in/i.test(data.vehicle.fuelType ?? '')}
         onCancel={() => !buying && setBuySheetOpen(false)}
-        onBuy={(mileage, askingPrice) => void buyAnalysis(mileage, askingPrice)}
+        onBuy={(mileage, askingPrice, zip) => void buyAnalysis(mileage, askingPrice, zip)}
       />
     </SafeAreaView>
   );

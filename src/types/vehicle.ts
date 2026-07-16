@@ -56,14 +56,42 @@ export interface SafetyRating {
   rollover?: number;
 }
 
-/** EPA fuel economy estimates. */
+/** EPA fuel economy estimates, plus live enrichment when available. */
 export interface FuelEconomy {
   city_mpg?: number;
   highway_mpg?: number;
   combined_mpg: number;
+  /** EPA's static estimate (their baked-in fuel price assumption). */
   annual_fuel_cost?: number;
   co2_gpm?: number;
   fuel_type?: string;
+  /** Driver-reported average ("Your MPG") — only present with 3+ drivers. */
+  real_world_mpg?: number | null;
+  /** How many drivers shared data behind real_world_mpg. */
+  real_world_sample?: number | null;
+  /** Annual cost re-priced at this week's national pump price (grade-matched). */
+  annual_fuel_cost_current?: number | null;
+  gas_price_per_gallon?: number | null;
+  /** ISO date of the price week behind annual_fuel_cost_current. */
+  gas_price_as_of?: string | null;
+}
+
+/**
+ * EV/plug-in ownership context (electric vehicles only): purchase incentives
+ * for the buyer's jurisdiction and charging density near their ZIP (only when
+ * a ZIP was entered at purchase).
+ */
+export interface EvOwnership {
+  incentives: {
+    jurisdiction: string;
+    count: number;
+    highlights: { title: string; type?: string | null }[];
+  } | null;
+  charging: {
+    stationCount: number;
+    dcFastCount: number;
+    radiusMiles: number;
+  } | null;
 }
 
 /**
@@ -212,10 +240,17 @@ export interface BuyersAnalysis {
    * mileage moves the price (negotiation ammo). Centered on buyerMileage.
    */
   valueByMileage?: { mileage: number; estimate: number }[];
+  /**
+   * The vendor history report's own retail valuation (Premium only) — a
+   * second anchor shown beside estimatedValue, never mixed into the verdict.
+   */
+  carfaxValue?: { amount: number; label: string } | null;
   /** NHTSA crash-test ratings for this model, when on file. */
   safety?: SafetyRating | null;
   /** EPA fuel economy for this model, when on file. */
   fuelEconomy?: FuelEconomy | null;
+  /** EV/plug-in only — incentives + charging context. Null for gas cars. */
+  evOwnership?: EvOwnership | null;
 }
 
 /**
@@ -245,7 +280,36 @@ export interface VehicleHistory {
     type: string | null;
     milesPerYear: number | null;
     events: number | null;
+    /** Verbatim from the report, e.g. "17 yrs. 10 mo.". */
+    lengthOfOwnership?: string | null;
+    states?: string[];
+    lastReportedOdometer?: number | null;
   }[];
+  /**
+   * The vendor report's own retail valuation + the history events it says
+   * move it. Suppressed by the vendor on branded cars → null.
+   */
+  historyBasedValue?: {
+    amount: number;
+    label: string;
+    events: { label: string; direction: 'up' | 'down' | null }[];
+  } | null;
+  /** AutoCheck's 1-100 score vs the typical range for similar vehicles. */
+  autocheckScore?: {
+    score: number;
+    rangeLow: number | null;
+    rangeHigh: number | null;
+  } | null;
+  /** Warranty status blurb, e.g. "Original warranty estimated to have expired." */
+  warranty?: string | null;
+  /** States/provinces this vehicle was registered in. */
+  locations?: string[];
+  /** The report's own badges ("CARFAX 1-Owner Vehicle"). */
+  highlights?: string[];
+  /** Loan/lien events — the lien must be released before a clean transfer. */
+  lienRecords?: { date: string; detail: string | null }[];
+  /** Per-VIN open-recall flag (model-level recalls live in openRecalls). */
+  openRecallReported?: boolean | null;
 }
 
 /**

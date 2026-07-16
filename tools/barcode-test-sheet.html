@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Vehify — Barcode Scanner Test Sheet</title>
+<script src="https://cdn.jsdelivr.net/npm/bwip-js@4/dist/bwip-js-min.js"></script>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #fff; color: #111; margin: 24px; }
+  h1 { font-size: 20px; }
+  p.note { color: #555; max-width: 720px; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); gap: 28px; margin-top: 20px; }
+  .case { border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
+  .case h2 { font-size: 15px; margin: 0 0 2px; }
+  .expect { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .pass { color: #0a7d33; } .reject { color: #b00020; }
+  canvas { max-width: 100%; }
+  .payload { font-family: ui-monospace, monospace; font-size: 10px; color: #777; word-break: break-all; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>Vehify barcode scanner test sheet</h1>
+<p class="note">
+  Open the app's scanner and point at each barcode (barcodes decode fine off a
+  monitor — only OCR suffers moiré). Green = the VIN sheet must open with that
+  exact VIN. Red = nothing may happen (Metro logs <code>[barcode] … no VIN</code>).
+  Test VINs are checksum-valid synthetics/field payloads, not real cars.
+</p>
+<div class="grid" id="grid"></div>
+<script>
+// Checksum-valid fixtures (same ones the unit tests use) + real field payloads.
+const VIN_A = '1HGCM82633A004352';
+const VIN_B = '2C4RDGCG0FR805928';          // field-verified pure-VIN code128
+const AAMVA_BMW =                            // real NY sticker payload (BMW)
+  '@\n\t\rAAMVA36001005VH00670058RG01250037ZV01620042ZR02040015ZZ02190013VH\nVAD5UXFE43538L034212\nVAKBMW \nVAL08\rRG\nRAMELU3950 \rZZ\nZZZ199706\r';
+const CASES = [
+  { bcid: 'qrcode',     text: VIN_A,  title: '1. QR — pure VIN (Tesla door-jamb style)', expect: `VIN sheet: ${VIN_A}`, ok: true },
+  { bcid: 'code128',    text: VIN_B,  title: '2. Code 128 — pure VIN', expect: `VIN sheet: ${VIN_B}`, ok: true },
+  { bcid: 'code39',     text: VIN_A,  title: '3. Code 39 — VIN (start/stop guards)', expect: `VIN sheet: ${VIN_A}`, ok: true },
+  { bcid: 'datamatrix', text: VIN_A,  title: '4. DataMatrix — pure VIN', expect: `VIN sheet: ${VIN_A}`, ok: true },
+  { bcid: 'pdf417',     text: AAMVA_BMW, title: '5. PDF417 — AAMVA registration (VAD tag)', expect: 'VIN sheet: 5UXFE43538L034212', ok: true },
+  { bcid: 'qrcode',     text: `https://dealer.example.com/inventory?vin=${VIN_A}&lot=42`, title: '6. QR — dealer URL containing VIN', expect: `VIN sheet: ${VIN_A}`, ok: true },
+  { bcid: 'code128',    text: '40805611116ELU3950', title: '7. Code 128 — sticker doc number (the field bug)', expect: 'NOTHING — no VIN sheet', ok: false },
+  { bcid: 'pdf417',     text: '@\nXXDATA36001005VH00670058RG01250037ZV01620042ZR02040015ZZ0', title: '8. PDF417 — data blob, no VAD tag', expect: 'NOTHING — no VIN sheet', ok: false },
+];
+const grid = document.getElementById('grid');
+for (const c of CASES) {
+  const div = document.createElement('div');
+  div.className = 'case';
+  div.innerHTML = `<h2>${c.title}</h2><div class="expect ${c.ok ? 'pass' : 'reject'}">Expected: ${c.expect}</div>`;
+  const canvas = document.createElement('canvas');
+  div.appendChild(canvas);
+  const payload = document.createElement('div');
+  payload.className = 'payload';
+  payload.textContent = JSON.stringify(c.text);
+  div.appendChild(payload);
+  grid.appendChild(div);
+  try {
+    const opts = { bcid: c.bcid, text: c.text, scale: 3, includetext: false };
+    // Square symbologies size themselves; a height option breaks them.
+    if (c.bcid !== 'qrcode' && c.bcid !== 'datamatrix') opts.height = 14;
+    bwipjs.toCanvas(canvas, opts);
+  } catch (e) {
+    payload.textContent = 'RENDER ERROR: ' + e;
+  }
+}
+</script>
+</body>
+</html>

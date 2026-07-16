@@ -52,3 +52,77 @@ for (const file of walk(root)) {
 if (changed > 0) {
   console.log(`[fix-expo-swift] patched ${changed} file(s) for Xcode 26 / Swift 6`);
 }
+
+// ── react-native-mlkit-ocr: jcenter() was removed in modern Gradle ──
+// The library's android/build.gradle still points at it, which fails the
+// Android release build. Swap for mavenCentral(). Idempotent; remove if the
+// package ever ships an update.
+const mlkitGradle = path.join(
+  __dirname, '..', 'node_modules', 'react-native-mlkit-ocr', 'android', 'build.gradle',
+);
+if (fs.existsSync(mlkitGradle)) {
+  const src = fs.readFileSync(mlkitGradle, 'utf8');
+  if (src.includes('jcenter()')) {
+    fs.writeFileSync(mlkitGradle, src.replace(/jcenter\(\)/g, 'mavenCentral()'));
+    console.log('[fix-expo-swift] mlkit-ocr: jcenter() -> mavenCentral()');
+  }
+}
+
+// ── react-native-mlkit-ocr iOS: GoogleMLKit 2.6.0 (2021) pins
+// GTMSessionFetcher ~>1.1, which clashes with the Google Sign-In SDK (needs
+// 3.x). Bump to a current GoogleMLKit and adapt the one API call that changed
+// (the no-arg +textRecognizer was replaced by +textRecognizerWithOptions:).
+const mlkitPodspec = path.join(
+  __dirname, '..', 'node_modules', 'react-native-mlkit-ocr', 'react-native-mlkit-ocr.podspec',
+);
+if (fs.existsSync(mlkitPodspec)) {
+  const src = fs.readFileSync(mlkitPodspec, 'utf8');
+  if (src.includes('"GoogleMLKit/TextRecognition", "2.6.0"')) {
+    fs.writeFileSync(
+      mlkitPodspec,
+      src.replace('"GoogleMLKit/TextRecognition", "2.6.0"', '"GoogleMLKit/TextRecognition", "~> 7.0"'),
+    );
+    console.log('[fix-expo-swift] mlkit-ocr: GoogleMLKit 2.6.0 -> ~>7.0');
+  }
+}
+// ── ios/Podfile: Google Sign-In's AppCheckCore needs GoogleUtilities +
+// RecaptchaInterop built with module maps. expo-build-properties writes
+// apple.extraPods but SDK 57's Podfile template never reads it, so inject the
+// pods directly. Idempotent; survives `expo prebuild` regenerating the file.
+const podfile = path.join(__dirname, '..', 'ios', 'Podfile');
+if (fs.existsSync(podfile)) {
+  const src = fs.readFileSync(podfile, 'utf8');
+  const anchor = "target 'Vehify' do\n  use_expo_modules!\n";
+  if (!src.includes("pod 'GoogleUtilities'") && src.includes(anchor)) {
+    fs.writeFileSync(
+      podfile,
+      src.replace(
+        anchor,
+        anchor +
+          "\n  # Google Sign-In's AppCheckCore imports these from Swift (module maps\n" +
+          '  # required). Injected by scripts/fix-expo-swift.js — SDK 57 ignores\n' +
+          '  # apple.extraPods from expo-build-properties.\n' +
+          "  pod 'GoogleUtilities', :modular_headers => true\n" +
+          "  pod 'RecaptchaInterop', :modular_headers => true\n",
+      ),
+    );
+    console.log('[fix-expo-swift] Podfile: modular headers for GoogleUtilities/RecaptchaInterop');
+  }
+}
+
+const mlkitObjc = path.join(
+  __dirname, '..', 'node_modules', 'react-native-mlkit-ocr', 'ios', 'MlkitOcr.m',
+);
+if (fs.existsSync(mlkitObjc)) {
+  const src = fs.readFileSync(mlkitObjc, 'utf8');
+  if (src.includes('[MLKTextRecognizer textRecognizer]')) {
+    fs.writeFileSync(
+      mlkitObjc,
+      src.replace(
+        /\[MLKTextRecognizer textRecognizer\]/g,
+        '[MLKTextRecognizer textRecognizerWithOptions:[[MLKTextRecognizerOptions alloc] init]]',
+      ),
+    );
+    console.log('[fix-expo-swift] mlkit-ocr: textRecognizer -> textRecognizerWithOptions:');
+  }
+}

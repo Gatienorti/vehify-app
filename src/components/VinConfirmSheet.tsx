@@ -61,7 +61,9 @@ export default function VinConfirmSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <Pressable style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onCancel} />
+      {/* Transparent backdrop (still tap-to-cancel): the scanner behind is
+          showing the frozen detection shot — it must read clean, not dimmed. */}
+      <Pressable style={styles.backdrop} onPress={onCancel} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.avoider}

@@ -38,13 +38,29 @@ export function isValidVin(raw: string): boolean {
  * normalized VIN, or null if none is found.
  */
 export function extractVinFromBarcode(raw: string): string | null {
+  // AAMVA document barcodes (registration cards' PDF417): the VIN lives in
+  // the VH (vehicle) subfile under element tag "VAD" — parse the tag
+  // explicitly, checksum-verified. NEVER window-scan these blobs: with
+  // dozens of 17-char windows the ISO checksum (rejects only ~10/11)
+  // statistically guarantees a junk hit ("620042ZR02040015Z").
+  const aamva = raw.toUpperCase().match(/VAD([A-HJ-NPR-Z0-9]{17})/);
+  if (aamva && hasValidCheckDigit(aamva[1]!)) return aamva[1]!;
+
   const s = normalizeVin(raw);
-  if (isValidVin(s)) return s;
-  const matches = s.match(/[A-HJ-NPR-Z0-9]{17}/g);
-  if (matches) {
-    for (const m of matches) {
-      if (isValidVin(m)) return m;
-    }
+  // Otherwise a payload is only trusted when it IS a VIN. Exactly 17 chars,
+  // or 17 after stripping known symbology wrappers from the ENDS (Code 39
+  // transmits its start/stop guards as 'I' or '*'). NEVER window-scan — an
+  // 18-char sticker doc-number ("40805611116ELU3950") has two 17-char windows
+  // and the checksum blessed one of them in the field.
+  if (isValidVin(s) && hasValidCheckDigit(s)) return s;
+  const stripped = s.replace(/^[I*]+/, '').replace(/[I*]+$/, '');
+  if (isValidVin(stripped) && hasValidCheckDigit(stripped)) return stripped;
+  // Structured payloads (dealer QR stickers linking a URL with the VIN in it,
+  // multi-line DataMatrix labels): split on non-alphanumerics and accept a
+  // token that is EXACTLY 17 + checksum. Token boundaries are not windows —
+  // the AAMVA junk slice sits inside a 32-char token and can never surface.
+  for (const token of raw.toUpperCase().split(/[^A-Z0-9]+/)) {
+    if (token.length === 17 && isValidVin(token) && hasValidCheckDigit(token)) return token;
   }
   return null;
 }

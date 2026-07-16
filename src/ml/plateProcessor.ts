@@ -22,18 +22,11 @@ import { deleteAsync } from 'expo-file-system/legacy';
 import MlkitOcr from 'react-native-mlkit-ocr';
 import type { CameraView } from 'expo-camera';
 import { findPlateInBlocks, type OcrBlockLike, type OcrBounding } from './plateScore';
-import { findVinInBlocks } from './vinDetect';
 import { detectSlogan, detectState } from './stateDetect';
 import { frameToCrop, type FrameLayout } from './frameCrop';
 import { voteOnReads, isAcceptableVote, type VoteResult } from './vote';
 
 export interface SingleRead {
-  /**
-   * A valid 17-char VIN spotted in the frame (door-jamb label text). Checked
-   * BEFORE the plate scorer — a VIN can't be confused with a 5–8 char plate,
-   * and the VIN route is the free one. When set, the plate fields are empty.
-   */
-  vin: string | null;
   /** Voted plate text (normalized: I/O/Q → 1/0/0). */
   plate: string;
   /** Detected state code, or null. */
@@ -42,6 +35,12 @@ export interface SingleRead {
   confident: boolean;
   /** The within-photo vote (for logging / cross-tick confirmation). */
   vote: VoteResult | null;
+  /**
+   * The frame-region crop this read came from (cache file). Handed to the
+   * caller so a detection can freeze the exact image the user aimed at —
+   * the CALLER owns deleting it (plateProcessor no longer cleans it up).
+   */
+  photoUri: string | null;
 }
 
 export interface ReadPlateOpts {
@@ -61,6 +60,11 @@ const PLATE_UPSCALE_WIDTH = 300;
 // State: wide vertical re-crops (banner above / slogan below), upscaled.
 const STATE_VERTICAL_FACTORS = [1.0, 1.6, 2.2, 2.8];
 const STATE_UPSCALE_WIDTH = 500;
+
+/** Delete a handed-off frame shot (see SingleRead.photoUri). */
+export function discardShot(uri: string | null | undefined): void {
+  if (uri) cleanup(uri);
+}
 
 function cleanup(uri: string): void {
   deleteAsync(uri, { idempotent: true }).catch(() => {});
@@ -150,17 +154,10 @@ export async function readPlateOnce(
   cleanup(photo.uri);
   const tCrop = Date.now();
 
-  // 2. LOCATE — one OCR pass over the frame crop. A valid 17-char VIN in the
-  // text wins immediately (free lookup, unambiguous vs a 5–8 char plate).
+  // 2. LOCATE — one OCR pass over the frame crop. Text-VIN OCR is retired:
+  // dense documents (registration cards) yield checksum-lucky junk — VINs come
+  // in via barcode/QR (onBarcodeScanned) or manual entry only.
   const blocks = (await MlkitOcr.detectFromUri(cropped.uri)) as OcrBlockLike[];
-  const vinHit = findVinInBlocks(blocks);
-  if (vinHit) {
-    if (__DEV__) {
-      console.log(`[readPlate] photo=${tPhoto - t0}ms crop=${tCrop - tPhoto}ms | ${nW}x${nH} | VIN: ${vinHit}`);
-    }
-    cleanup(cropped.uri);
-    return { vin: vinHit, plate: '', state: null, confident: false, vote: null };
-  }
   const detection = findPlateInBlocks(blocks);
   const tLocate = Date.now();
 
@@ -170,7 +167,7 @@ export async function readPlateOnce(
       console.log(`[readPlate] photo=${tPhoto - t0}ms crop=${tCrop - tPhoto}ms locate=${tLocate - tCrop}ms | ${nW}x${nH} | saw: "${saw}" | no plate`);
     }
     cleanup(cropped.uri);
-    return { vin: null, plate: '', state: null, confident: false, vote: null };
+    return { plate: '', state: null, confident: false, vote: null, photoUri: null };
   }
 
   const cW = fc.width;
@@ -193,7 +190,6 @@ export async function readPlateOnce(
   );
   const statePromise = opts.readState ? voteState(cropped.uri, detection.region, cW, cH) : Promise.resolve(null);
   const [plateResults, state] = await Promise.all([platePromise, statePromise]);
-  cleanup(cropped.uri);
 
   const reads: string[] = [normalizePlateOcr(detection.text)];
   for (const res of plateResults) {
@@ -211,5 +207,5 @@ export async function readPlateOnce(
     );
   }
 
-  return { vin: null, plate: vote?.plate ?? '', state, confident, vote };
+  return { plate: vote?.plate ?? '', state, confident, vote, photoUri: cropped.uri };
 }

@@ -10,6 +10,8 @@ import type { PurchaseConfirmResponse } from '../types/api';
 interface BuyOptions {
   mileage?: number;
   askingPrice?: number;
+  /** Buyer's 5-digit ZIP — unlocks charging density on EV reports. */
+  zip?: string;
   hasPlateCredit?: boolean;
 }
 
@@ -36,7 +38,7 @@ export function usePurchaseReport() {
       if (opts.mileage !== undefined) track('mileage_entered', { vin });
       if (opts.askingPrice !== undefined) track('asking_price_entered', { vin });
       setBuying(true);
-      const attemptKey = `${vin}|${tier}|${opts.mileage ?? ''}|${opts.askingPrice ?? ''}`;
+      const attemptKey = `${vin}|${tier}|${opts.mileage ?? ''}|${opts.askingPrice ?? ''}|${opts.zip ?? ''}`;
       try {
         // TODO: replace with RevenueCat purchase flow; this mocks the store round-trip.
         let purchaseToken = startTokenRef.current?.key === attemptKey ? startTokenRef.current.token : null;
@@ -47,6 +49,7 @@ export function usePurchaseReport() {
             productId: PRODUCT_IDS[tier],
             ...(opts.mileage !== undefined ? { mileage: opts.mileage } : {}),
             ...(opts.askingPrice !== undefined ? { askingPrice: opts.askingPrice } : {}),
+            ...(opts.zip !== undefined ? { zip: opts.zip } : {}),
           }).unwrap();
           purchaseToken = start.purchaseToken;
           // Charged (or will be) — remember the token before the confirm hop so

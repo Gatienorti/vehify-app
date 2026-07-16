@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import {
   ChevronRight,
   FileText,
@@ -16,10 +18,21 @@ import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
 import { useLazyGetPurchasesQuery } from '../services/api';
 import AuthSheet, { type AuthMode } from '../components/AuthSheet';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_SIGN_IN_READY, GOOGLE_WEB_CLIENT_ID } from '../config/socialAuth';
 import type { TabScreenProps } from '../types/navigation';
+
+// One-time SDK config (module scope — before any button is pressed). The web
+// client id is the token audience the backend verifies (services.google.client_id).
+if (GOOGLE_SIGN_IN_READY) {
+  GoogleSignin.configure({
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+  });
+}
 
 type Props = TabScreenProps<'Account'>;
 
@@ -43,7 +56,7 @@ function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; 
 export default function AccountScreen(_props: Props) {
   const { colors, spacing, isDark } = useTheme();
   const dispatch = useAppDispatch();
-  const { user, isAuthenticated, signOut, busy } = useAccount();
+  const { user, isAuthenticated, signIn, signOut, busy } = useAccount();
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const openAuth = (mode: AuthMode) => {
@@ -51,12 +64,51 @@ export default function AccountScreen(_props: Props) {
     setAuthOpen(true);
   };
 
-  // Real Apple/Google SDK sign-in ships next — until then the buttons are an
-  // honest placeholder. Email + password (the "Log in · Register" link) works
-  // today.
-  const comingSoon = () => {
-    track('account_prompt_viewed', { source: 'account_tab' });
-    Alert.alert('Coming soon', 'Sign in with Apple and Google is on the way.');
+  // Native Sign in with Apple → identity token → backend verify → session.
+  // Cancel is silent (not an error); Apple only shares the name on the very
+  // first authorization, so pass it along when present.
+  const appleSignIn = async () => {
+    track('account_prompt_viewed', { source: 'account_tab', provider: 'apple' });
+    try {
+      const cred = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!cred.identityToken) throw new Error('no identity token');
+      const name = [cred.fullName?.givenName, cred.fullName?.familyName].filter(Boolean).join(' ');
+      await signIn({
+        provider: 'apple',
+        identityToken: cred.identityToken,
+        ...(name ? { name } : {}),
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return;
+      Alert.alert('Sign-in didn’t complete', 'Please try again.');
+    }
+  };
+
+  // Native Google sign-in → ID token (audience = our web client id) → backend.
+  const googleSignIn = async () => {
+    track('account_prompt_viewed', { source: 'account_tab', provider: 'google' });
+    if (!GOOGLE_SIGN_IN_READY) {
+      Alert.alert('Coming soon', 'Sign in with Google is on the way.');
+      return;
+    }
+    try {
+      await GoogleSignin.hasPlayServices();
+      const res = await GoogleSignin.signIn();
+      if (res.type !== 'success' || !res.data.idToken) return; // cancelled
+      await signIn({
+        provider: 'google',
+        identityToken: res.data.idToken,
+        ...(res.data.user.name ? { name: res.data.user.name } : {}),
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === statusCodes.SIGN_IN_CANCELLED) return;
+      Alert.alert('Sign-in didn’t complete', 'Please try again.');
+    }
   };
 
   // Device-local setting (AsyncStorage via the settings slice) — never synced
@@ -124,16 +176,32 @@ export default function AccountScreen(_props: Props) {
               Create a free account to keep your lookups and reports backed up and available on any
               device you sign in on.
             </Text>
-            <PrimaryButton
-              label="Continue with Apple"
-              onPress={comingSoon}
-              style={{ marginTop: spacing.md }}
-            />
-            <PrimaryButton
-              label="Continue with Google"
-              variant="secondary"
-              onPress={comingSoon}
-              style={{ marginTop: spacing.sm }}
+            {/* Custom Apple button per Apple's branding spec (black face, white
+                 logo, approved title) — custom is allowed and lets the logo
+                size pair with the Google button's G. iOS-only. */}
+            {Platform.OS === 'ios' ? (
+              <Pressable
+                onPress={() => void appleSignIn()}
+                disabled={busy}
+                style={({ pressed }) => [
+                  styles.appleButton,
+                  {
+                    backgroundColor: isDark ? '#FFFFFF' : '#000000',
+                    marginTop: spacing.md,
+                    opacity: pressed || busy ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.appleLogo, { color: isDark ? '#000000' : '#FFFFFF' }]}></Text>
+                <Text style={[styles.appleLabel, { color: isDark ? '#000000' : '#FFFFFF' }]}>
+                  Continue with Apple
+                </Text>
+              </Pressable>
+            ) : null}
+            <GoogleSignInButton
+              onPress={() => void googleSignIn()}
+              disabled={busy}
+              style={{ marginTop: Platform.OS === 'ios' ? spacing.sm : spacing.md }}
             />
             <View style={styles.textLinkRow}>
               <Pressable onPress={() => openAuth('login')} disabled={busy} hitSlop={8}>
@@ -198,6 +266,18 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   cardBody: { fontSize: 14, lineHeight: 20 },
   textLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+  appleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 48,
+    borderRadius: 12,
+    width: '100%',
+  },
+  // The  glyph sits slightly low in the em box — nudge up to optically center.
+  appleLogo: { fontSize: 24, marginTop: -3 },
+  appleLabel: { fontSize: 17, fontWeight: '600' },
   textLink: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1 },
   rowLabel: { fontSize: 16 },

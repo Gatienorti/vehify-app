@@ -72,6 +72,8 @@ export interface PurchaseStartRequest {
   mileage?: number;
   /** Optional seller's asking price (dollars) — powers the Deal verdict. */
   askingPrice?: number;
+  /** Optional buyer 5-digit ZIP — unlocks charging density on EV reports. */
+  zip?: string;
 }
 
 export interface PurchaseStartResponse {
@@ -85,16 +87,46 @@ export interface PurchaseConfirmRequest {
   tier: PaidTier;
 }
 
+/**
+ * Where a paid report's CONTENT is in its lifecycle. Confirm queues the build
+ * on the backend and answers instantly with `generating`; the app polls
+ * GET /report/{id} until it flips to `ready`. `failed` means the queued build
+ * exhausted its retries — recover with the FREE POST /report/{id}/retry.
+ */
+export type ReportGenerationStatus = 'generating' | 'ready' | 'failed';
+
 export interface PurchaseConfirmResponse {
   reportId: string;
   tier: PaidTier;
+  /** Optional for older backends; treat absence as `ready` (legacy sync confirm). */
+  status?: ReportGenerationStatus;
 }
 
 export type ReportResponse = Report & {
   id: string;
+  status?: 'ready';
   /** When the content was last (re)generated — drives the stale-report banner. */
   generatedAt?: string | null;
 };
+
+/** GET /report/{id} while the queued build is still running (or failed). */
+export interface ReportPendingResponse {
+  id: string;
+  reportId: string;
+  tier: PaidTier;
+  vin?: string;
+  status: 'generating' | 'failed';
+}
+
+/** What GET /report/{id} actually returns — narrow with `isReportReady`. */
+export type ReportFetchResponse = ReportResponse | ReportPendingResponse;
+
+export function isReportReady(r: ReportFetchResponse | undefined): r is ReportResponse {
+  return r !== undefined && (r.status === undefined || r.status === 'ready');
+}
+
+/** POST /report/{id}/refresh and /retry both answer with the poll-me payload. */
+export type ReportRequeuedResponse = ReportPendingResponse;
 
 /**
  * Sign in with Apple / Google → Sanctum bearer token. `identityToken` is the
