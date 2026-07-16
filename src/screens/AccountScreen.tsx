@@ -176,20 +176,27 @@ export default function AccountScreen(_props: Props) {
               Create a free account to keep your lookups and reports backed up and available on any
               device you sign in on.
             </Text>
-            {/* Apple's official button (HIG requirement — App Review checks
-                the style). Android gets Google only; Apple sign-in is iOS-only. */}
+            {/* Custom Apple button per Apple's branding spec (black face, white
+                 logo, approved title) — custom is allowed and lets the logo
+                size pair with the Google button's G. iOS-only. */}
             {Platform.OS === 'ios' ? (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                buttonStyle={
-                  isDark
-                    ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                    : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-                }
-                cornerRadius={12}
-                style={[styles.appleButton, { marginTop: spacing.md }]}
+              <Pressable
                 onPress={() => void appleSignIn()}
-              />
+                disabled={busy}
+                style={({ pressed }) => [
+                  styles.appleButton,
+                  {
+                    backgroundColor: isDark ? '#FFFFFF' : '#000000',
+                    marginTop: spacing.md,
+                    opacity: pressed || busy ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.appleLogo, { color: isDark ? '#000000' : '#FFFFFF' }]}></Text>
+                <Text style={[styles.appleLabel, { color: isDark ? '#000000' : '#FFFFFF' }]}>
+                  Continue with Apple
+                </Text>
+              </Pressable>
             ) : null}
             <GoogleSignInButton
               onPress={() => void googleSignIn()}
@@ -259,7 +266,18 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   cardBody: { fontSize: 14, lineHeight: 20 },
   textLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
-  appleButton: { height: 48, width: '100%' },
+  appleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 48,
+    borderRadius: 12,
+    width: '100%',
+  },
+  // The  glyph sits slightly low in the em box — nudge up to optically center.
+  appleLogo: { fontSize: 24, marginTop: -3 },
+  appleLabel: { fontSize: 17, fontWeight: '600' },
   textLink: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1 },
   rowLabel: { fontSize: 16 },

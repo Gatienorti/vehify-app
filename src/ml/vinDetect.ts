@@ -55,10 +55,15 @@ export function findVinInBlocks(blocks: OcrBlockLike[]): string | null {
     }
   }
 
-  // Pass 2: a 17-char run within a single line (spaces/dashes inside the
-  // line collapsed — OCR sometimes splits the VIN with a stray space).
+  // Pass 2: a line that IS the VIN (spaces/dashes inside collapsed — OCR
+  // sometimes splits it with a stray space). The line must be essentially
+  // just the 17 chars: dense documents (registration cards, insurance slips)
+  // produce long merged lines where a random 17-char window passes the
+  // check digit ~1/11 of the time — never window-scan those.
+  const MAX_BARE_VIN_LINE = 20; // 17 + small slack for stray punctuation
   for (const line of lines) {
     const compact = applyOcrCorrections(line.replace(/[\s\-]/g, ''));
+    if (compact.length > MAX_BARE_VIN_LINE) continue;
     const runs = compact.match(/[A-HJ-NPR-Z0-9]{17}/g) ?? [];
     for (const run of runs) {
       const v = extractVinFromBarcode(run);

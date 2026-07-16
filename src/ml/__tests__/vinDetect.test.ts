@@ -49,4 +49,18 @@ describe('findVinInBlocks', () => {
   it('returns null when nothing VIN-like is present', () => {
     expect(findVinInBlocks([block('Texas License Plate Lookup — Full Vehicle History')])).toBeNull();
   });
+
+  it('never window-scans a dense merged line (the registration-card bug)', () => {
+    // A registration card line MLKit merged from several fragments. A random
+    // 17-char window of it can pass the check digit (~1/11 odds) — the line
+    // being far longer than a bare VIN is what must reject it.
+    expect(findVinInBlocks([block('096998EM40805611116ELU3950PAS8G0910')])).toBeNull();
+    // The all-ones VIN passes the checksum — buried in a long line it must
+    // still be rejected (only near-bare VIN lines are trusted).
+    expect(findVinInBlocks([block('REGISTRATION11111111111111111CARD')])).toBeNull();
+  });
+
+  it('still accepts a bare VIN line with small trailing noise', () => {
+    expect(findVinInBlocks([block('1HGCM82633A004352 *')])).toBe(REAL_VIN);
+  });
 });

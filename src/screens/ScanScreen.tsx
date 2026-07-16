@@ -54,8 +54,10 @@ export default function ScanScreen({ navigation, route }: Props) {
 
   // Rolling buffer of plate reads from fresh photos, voted once enough agree.
   const plateReadsRef = useRef<string[]>([]);
+  // Last tick's text-VIN — a candidate must repeat on the NEXT tick to count.
+  const vinReadRef = useRef<string | null>(null);
   const stateVotesRef = useRef<Map<string, number>>(new Map());
-  const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); };
+  const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); vinReadRef.current = null; };
 
   // Pinch-to-zoom for the camera (0 = none … 1 = max). Helps read a distant plate.
   const [zoom, setZoom] = useState(0);
@@ -194,13 +196,23 @@ export default function ScanScreen({ navigation, route }: Props) {
         const read = await readPlateOnce(camRef.current, frameMeasureRef.current, { readState: !stateLocked });
         if (!read) return;
 
+        // Text-VINs need 2 CONSECUTIVE agreeing ticks before the sheet opens.
+        // A checksum-valid frankenstring from a dense document (registration
+        // card) varies tick to tick; a real printed VIN repeats. Barcode VINs
+        // skip this — they arrive via onBarcodeScanned, not OCR.
         if (read.vin && !handledRef.current) {
-          handledRef.current = true;
-          track('vin_detected', { source: 'ocr' });
-          setPendingVin(read.vin);
-          clearReads();
+          if (vinReadRef.current === read.vin) {
+            handledRef.current = true;
+            track('vin_detected', { source: 'ocr' });
+            setPendingVin(read.vin);
+            clearReads();
+            vinReadRef.current = null;
+            return;
+          }
+          vinReadRef.current = read.vin;
           return;
         }
+        vinReadRef.current = null; // streak broken — a tick without that VIN
 
         if (read.state) {
           stateVotesRef.current.set(read.state, (stateVotesRef.current.get(read.state) ?? 0) + 1);
