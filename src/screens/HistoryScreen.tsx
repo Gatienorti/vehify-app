@@ -67,7 +67,7 @@ export default function HistoryScreen({ navigation }: Props) {
       <Text style={[styles.header, { color: colors.text, paddingHorizontal: spacing.lg }]}>History</Text>
       {!settled ? (
         <View style={styles.empty}>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : showEmpty ? (
         <View style={styles.empty}>
