@@ -66,5 +66,23 @@ describe('vin', () => {
     it('returns null when there is no valid VIN', () => {
       expect(extractVinFromBarcode('HELLO123')).toBeNull();
     });
+
+    it('pulls the VIN out of a dealer QR URL (token-boundary, not windows)', () => {
+      expect(extractVinFromBarcode(`https://dealer.example.com/inventory?vin=${VIN}&lot=42`)).toBe(VIN);
+      expect(extractVinFromBarcode(`WMI:1HG\nVIN ${VIN}\nCOLOR BLK`)).toBe(VIN);
+    });
+
+    it('token rule never revives the AAMVA junk slice', () => {
+      // The lucky window lives inside a 32-char token — token-exact matching
+      // cannot surface it.
+      expect(
+        extractVinFromBarcode('@\nXXDATA36001005VH00670058RG01250037ZV01620042ZR02040015ZZ0'),
+      ).toBeNull();
+    });
+
+    it('handles lowercase and padded payloads', () => {
+      expect(extractVinFromBarcode(` ${VIN.toLowerCase()} `)).toBe(VIN);
+      expect(extractVinFromBarcode(`*${VIN}*`)).toBe(VIN);
+    });
   });
 });

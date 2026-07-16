@@ -55,6 +55,13 @@ export function extractVinFromBarcode(raw: string): string | null {
   if (isValidVin(s) && hasValidCheckDigit(s)) return s;
   const stripped = s.replace(/^[I*]+/, '').replace(/[I*]+$/, '');
   if (isValidVin(stripped) && hasValidCheckDigit(stripped)) return stripped;
+  // Structured payloads (dealer QR stickers linking a URL with the VIN in it,
+  // multi-line DataMatrix labels): split on non-alphanumerics and accept a
+  // token that is EXACTLY 17 + checksum. Token boundaries are not windows —
+  // the AAMVA junk slice sits inside a 32-char token and can never surface.
+  for (const token of raw.toUpperCase().split(/[^A-Z0-9]+/)) {
+    if (token.length === 17 && isValidVin(token) && hasValidCheckDigit(token)) return token;
+  }
   return null;
 }
 
