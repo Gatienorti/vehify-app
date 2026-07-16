@@ -89,6 +89,7 @@ export default function ScanScreen({ navigation, route }: Props) {
       return null;
     });
   }, []);
+  const frozen = frozenShot !== null || frozenFull !== null;
   const stateVotesRef = useRef<Map<string, number>>(new Map());
   const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); };
 
@@ -449,8 +450,11 @@ export default function ScanScreen({ navigation, route }: Props) {
           {frozenFull ? (
             <Image source={{ uri: frozenFull }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : null}
-          {/* Darken the idle preview a touch so the frame + button pop. */}
-          <View style={[styles.scrim, !scanning && styles.scrimIdle]} pointerEvents="none" />
+          {/* Darken the idle preview a touch so the frame + button pop —
+              but never dim a frozen capture; it should read clean. */}
+          {!frozen ? (
+            <View style={[styles.scrim, !scanning && styles.scrimIdle]} pointerEvents="none" />
+          ) : null}
         </>
       ) : (
         <LinearGradient
@@ -475,7 +479,7 @@ export default function ScanScreen({ navigation, route }: Props) {
             {frozenShot ? (
               <Image source={{ uri: frozenShot }} style={styles.frozenShot} resizeMode="cover" />
             ) : null}
-            <ScannerFrame />
+            <ScannerFrame paused={frozen} />
           </View>
           {/* Always in layout (opacity toggle) — conditionally rendering it
               re-centers the stage and moves the frame between idle/scanning. */}
