@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleSignin, GoogleSigninButton, statusCodes } from '@react-native-google-signin/google-signin';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import {
   ChevronRight,
   FileText,
@@ -18,6 +18,7 @@ import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
 import { useLazyGetPurchasesQuery } from '../services/api';
 import AuthSheet, { type AuthMode } from '../components/AuthSheet';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -190,14 +191,10 @@ export default function AccountScreen(_props: Props) {
                 onPress={() => void appleSignIn()}
               />
             ) : null}
-            {/* Google's official branded button (their sign-in guidelines),
-                matching the official Apple button above. */}
-            <GoogleSigninButton
-              size={GoogleSigninButton.Size.Wide}
-              color={isDark ? GoogleSigninButton.Color.Light : GoogleSigninButton.Color.Dark}
+            <GoogleSignInButton
               onPress={() => void googleSignIn()}
               disabled={busy}
-              style={[styles.googleButton, { marginTop: Platform.OS === 'ios' ? spacing.sm : spacing.md }]}
+              style={{ marginTop: Platform.OS === 'ios' ? spacing.sm : spacing.md }}
             />
             <View style={styles.textLinkRow}>
               <Pressable onPress={() => openAuth('login')} disabled={busy} hitSlop={8}>
@@ -263,7 +260,6 @@ const styles = StyleSheet.create({
   cardBody: { fontSize: 14, lineHeight: 20 },
   textLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
   appleButton: { height: 48, width: '100%' },
-  googleButton: { width: '100%', height: 52, alignSelf: 'center' },
   textLink: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1 },
   rowLabel: { fontSize: 16 },
