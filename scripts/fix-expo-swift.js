@@ -120,7 +120,7 @@ if (fs.existsSync(mlkitObjc)) {
       mlkitObjc,
       src.replace(
         /\[MLKTextRecognizer textRecognizer\]/g,
-        '[MLKTextRecognizer textRecognizerWithOptions:[[MLKTextRecognitionOptions alloc] init]]',
+        '[MLKTextRecognizer textRecognizerWithOptions:[[MLKTextRecognizerOptions alloc] init]]',
       ),
     );
     console.log('[fix-expo-swift] mlkit-ocr: textRecognizer -> textRecognizerWithOptions:');
