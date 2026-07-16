@@ -7,9 +7,12 @@ import type { BuyScore } from '../types/vehicle';
 export default function ScoreBadge({
   score,
   label = 'AI Buy Score',
+  premium = false,
 }: {
   score: BuyScore;
   label?: string;
+  /** Per-VIN (Complete-History) score — brand accent, matching the history cards. */
+  premium?: boolean;
 }) {
   const { colors, radius, spacing } = useTheme();
   const color =
@@ -20,7 +23,13 @@ export default function ScoreBadge({
         : colors.scoreRed;
 
   return (
-    <View style={[styles.wrap, { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, borderColor: colors.border }]}>
+    <View
+      style={[
+        styles.wrap,
+        { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, borderColor: colors.border },
+        premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
+      ]}
+    >
       <View style={styles.row}>
         <View style={[styles.dot, { backgroundColor: color }]} />
         <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>

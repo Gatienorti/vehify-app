@@ -431,7 +431,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             analysis tier it is honestly LOCKED — we haven't seen this VIN's
             records yet, and that's the +$5 upsell. */}
         {analysis.buyScore ? (
-          <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" />
+          <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" premium />
         ) : !history ? (
           <View style={[styles.lockedCard, { backgroundColor: colors.surfaceAlt }]}>
             <View style={styles.lockedHeader}>
