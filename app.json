@@ -15,7 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vehify.app"
+      "bundleIdentifier": "com.vehify.app",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.vehify.app",
@@ -36,7 +40,14 @@
         }
       ],
       "expo-asset",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.297086662226-iuo0m8t2fmplorc8n8hg7lj7ac6a4lag"
+        }
+      ]
     ]
   }
 }

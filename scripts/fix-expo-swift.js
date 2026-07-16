@@ -52,3 +52,18 @@ for (const file of walk(root)) {
 if (changed > 0) {
   console.log(`[fix-expo-swift] patched ${changed} file(s) for Xcode 26 / Swift 6`);
 }
+
+// ── react-native-mlkit-ocr: jcenter() was removed in modern Gradle ──
+// The library's android/build.gradle still points at it, which fails the
+// Android release build. Swap for mavenCentral(). Idempotent; remove if the
+// package ever ships an update.
+const mlkitGradle = path.join(
+  __dirname, '..', 'node_modules', 'react-native-mlkit-ocr', 'android', 'build.gradle',
+);
+if (fs.existsSync(mlkitGradle)) {
+  const src = fs.readFileSync(mlkitGradle, 'utf8');
+  if (src.includes('jcenter()')) {
+    fs.writeFileSync(mlkitGradle, src.replace(/jcenter\(\)/g, 'mavenCentral()'));
+    console.log('[fix-expo-swift] mlkit-ocr: jcenter() -> mavenCentral()');
+  }
+}
