@@ -85,6 +85,31 @@ if (fs.existsSync(mlkitPodspec)) {
     console.log('[fix-expo-swift] mlkit-ocr: GoogleMLKit 2.6.0 -> ~>7.0');
   }
 }
+// ── ios/Podfile: Google Sign-In's AppCheckCore needs GoogleUtilities +
+// RecaptchaInterop built with module maps. expo-build-properties writes
+// apple.extraPods but SDK 57's Podfile template never reads it, so inject the
+// pods directly. Idempotent; survives `expo prebuild` regenerating the file.
+const podfile = path.join(__dirname, '..', 'ios', 'Podfile');
+if (fs.existsSync(podfile)) {
+  const src = fs.readFileSync(podfile, 'utf8');
+  const anchor = "target 'Vehify' do\n  use_expo_modules!\n";
+  if (!src.includes("pod 'GoogleUtilities'") && src.includes(anchor)) {
+    fs.writeFileSync(
+      podfile,
+      src.replace(
+        anchor,
+        anchor +
+          "\n  # Google Sign-In's AppCheckCore imports these from Swift (module maps\n" +
+          '  # required). Injected by scripts/fix-expo-swift.js — SDK 57 ignores\n' +
+          '  # apple.extraPods from expo-build-properties.\n' +
+          "  pod 'GoogleUtilities', :modular_headers => true\n" +
+          "  pod 'RecaptchaInterop', :modular_headers => true\n",
+      ),
+    );
+    console.log('[fix-expo-swift] Podfile: modular headers for GoogleUtilities/RecaptchaInterop');
+  }
+}
+
 const mlkitObjc = path.join(
   __dirname, '..', 'node_modules', 'react-native-mlkit-ocr', 'ios', 'MlkitOcr.m',
 );
