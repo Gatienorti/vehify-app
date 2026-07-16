@@ -42,6 +42,12 @@ export interface SingleRead {
   confident: boolean;
   /** The within-photo vote (for logging / cross-tick confirmation). */
   vote: VoteResult | null;
+  /**
+   * The frame-region crop this read came from (cache file). Handed to the
+   * caller so a detection can freeze the exact image the user aimed at —
+   * the CALLER owns deleting it (plateProcessor no longer cleans it up).
+   */
+  photoUri: string | null;
 }
 
 export interface ReadPlateOpts {
@@ -61,6 +67,11 @@ const PLATE_UPSCALE_WIDTH = 300;
 // State: wide vertical re-crops (banner above / slogan below), upscaled.
 const STATE_VERTICAL_FACTORS = [1.0, 1.6, 2.2, 2.8];
 const STATE_UPSCALE_WIDTH = 500;
+
+/** Delete a handed-off frame shot (see SingleRead.photoUri). */
+export function discardShot(uri: string | null | undefined): void {
+  if (uri) cleanup(uri);
+}
 
 function cleanup(uri: string): void {
   deleteAsync(uri, { idempotent: true }).catch(() => {});
@@ -158,8 +169,7 @@ export async function readPlateOnce(
     if (__DEV__) {
       console.log(`[readPlate] photo=${tPhoto - t0}ms crop=${tCrop - tPhoto}ms | ${nW}x${nH} | VIN: ${vinHit}`);
     }
-    cleanup(cropped.uri);
-    return { vin: vinHit, plate: '', state: null, confident: false, vote: null };
+    return { vin: vinHit, plate: '', state: null, confident: false, vote: null, photoUri: cropped.uri };
   }
   const detection = findPlateInBlocks(blocks);
   const tLocate = Date.now();
@@ -170,7 +180,7 @@ export async function readPlateOnce(
       console.log(`[readPlate] photo=${tPhoto - t0}ms crop=${tCrop - tPhoto}ms locate=${tLocate - tCrop}ms | ${nW}x${nH} | saw: "${saw}" | no plate`);
     }
     cleanup(cropped.uri);
-    return { vin: null, plate: '', state: null, confident: false, vote: null };
+    return { vin: null, plate: '', state: null, confident: false, vote: null, photoUri: null };
   }
 
   const cW = fc.width;
@@ -193,7 +203,6 @@ export async function readPlateOnce(
   );
   const statePromise = opts.readState ? voteState(cropped.uri, detection.region, cW, cH) : Promise.resolve(null);
   const [plateResults, state] = await Promise.all([platePromise, statePromise]);
-  cleanup(cropped.uri);
 
   const reads: string[] = [normalizePlateOcr(detection.text)];
   for (const res of plateResults) {
@@ -211,5 +220,5 @@ export async function readPlateOnce(
     );
   }
 
-  return { vin: null, plate: vote?.plate ?? '', state, confident, vote };
+  return { vin: null, plate: vote?.plate ?? '', state, confident, vote, photoUri: cropped.uri };
 }

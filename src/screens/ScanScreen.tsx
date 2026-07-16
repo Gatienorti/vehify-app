@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -26,7 +26,7 @@ import {
 } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
 import { extractVinFromBarcode } from '../utils/vin';
-import { readPlateOnce } from '../ml/plateProcessor';
+import { discardShot, readPlateOnce } from '../ml/plateProcessor';
 import { voteOnReads, isAcceptableVote } from '../ml/vote';
 import type { FrameLayout } from '../ml/frameCrop';
 import type { TabScreenProps } from '../types/navigation';
@@ -56,6 +56,28 @@ export default function ScanScreen({ navigation, route }: Props) {
   const plateReadsRef = useRef<string[]>([]);
   // Last tick's text-VIN — a candidate must repeat on the NEXT tick to count.
   const vinReadRef = useRef<string | null>(null);
+  // Latest tick's frame shot; on detection it's promoted to the freeze-frame
+  // shown over the scanner (spec §6: "freeze frame, show detected text").
+  const lastShotRef = useRef<string | null>(null);
+  const [frozenShot, setFrozenShot] = useState<string | null>(null);
+  const keepShot = (uri: string | null) => {
+    if (lastShotRef.current && lastShotRef.current !== uri) discardShot(lastShotRef.current);
+    lastShotRef.current = uri;
+  };
+  const freezeShot = () => {
+    setFrozenShot((prev) => {
+      if (prev) discardShot(prev);
+      const shot = lastShotRef.current;
+      lastShotRef.current = null;
+      return shot;
+    });
+  };
+  const unfreezeShot = () => {
+    setFrozenShot((prev) => {
+      if (prev) discardShot(prev);
+      return null;
+    });
+  };
   const stateVotesRef = useRef<Map<string, number>>(new Map());
   const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); vinReadRef.current = null; };
 
@@ -152,6 +174,8 @@ export default function ScanScreen({ navigation, route }: Props) {
   const stopScanning = () => {
     setScanning(false);
     clearReads();
+    keepShot(null);
+    unfreezeShot();
     setTorch(false);
     handledRef.current = false;
   };
@@ -195,6 +219,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         }
         const read = await readPlateOnce(camRef.current, frameMeasureRef.current, { readState: !stateLocked });
         if (!read) return;
+        keepShot(read.photoUri);
 
         // Text-VINs need 2 CONSECUTIVE agreeing ticks before the sheet opens.
         // A checksum-valid frankenstring from a dense document (registration
@@ -204,6 +229,7 @@ export default function ScanScreen({ navigation, route }: Props) {
           if (vinReadRef.current === read.vin) {
             handledRef.current = true;
             track('vin_detected', { source: 'ocr' });
+            freezeShot();
             setPendingVin(read.vin);
             clearReads();
             vinReadRef.current = null;
@@ -235,6 +261,7 @@ export default function ScanScreen({ navigation, route }: Props) {
             if (count > top) { state = code; top = count; }
           }
           track('plate_detected', { state: state ?? 'unknown', confidence: vote.confidence });
+          freezeShot();
           setPendingPlate({ plate: vote.plate, state });
           clearReads();
         }
@@ -251,6 +278,7 @@ export default function ScanScreen({ navigation, route }: Props) {
     setPendingPlate(null);
     setPendingVin(null);
     setLookupError(null);
+    unfreezeShot();
     clearReads();
     handledRef.current = false;
   };
@@ -263,6 +291,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         recordLookup(res.vehicle, { lookupType: 'vin' });
         setSheetOpen(false);
         setPendingVin(null);
+        unfreezeShot();
         // Already-owned report → straight to it; the basic page would only
         // offer "View your report" anyway.
         const owned = purchasesRef.current?.find((p) => p.vin === res.vehicle.vin && p.reportId);
@@ -306,6 +335,7 @@ export default function ScanScreen({ navigation, route }: Props) {
             plateTokenRef.current = null;
             setSheetOpen(false);
             setPendingPlate(null);
+            unfreezeShot();
             track('plate_purchase_no_hit', { state });
             Alert.alert(
               'No vehicle found for this plate',
@@ -332,6 +362,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         plateTokenRef.current = null;
         setSheetOpen(false);
         setPendingPlate(null);
+        unfreezeShot();
         track('plate_purchase_completed', { state, source: res.source });
         navigation.navigate('VehicleMatch', { result: res, plate, state });
       } catch {
@@ -356,7 +387,14 @@ export default function ScanScreen({ navigation, route }: Props) {
       if (!scanning) return; // ignore until the user starts scanning
       if (handledRef.current) return;
       const vin = extractVinFromBarcode(result.data ?? '');
-      if (!vin) return;
+      if (!vin) {
+        // Common + correct: document barcodes (registration cards, insurance
+        // slips) encode control numbers, not VINs. Log so it's diagnosable.
+        if (__DEV__) {
+          console.log(`[barcode] ${result.type} decoded, no VIN in payload: "${(result.data ?? '').slice(0, 40)}"`);
+        }
+        return;
+      }
       handledRef.current = true;
       track('vin_detected', { source: 'barcode' });
       setPendingVin(vin);
@@ -416,6 +454,9 @@ export default function ScanScreen({ navigation, route }: Props) {
 
         <View style={styles.stage}>
           <View ref={frameContainerRef} collapsable={false}>
+            {frozenShot ? (
+              <Image source={{ uri: frozenShot }} style={styles.frozenShot} resizeMode="cover" />
+            ) : null}
             <ScannerFrame />
           </View>
           {/* Always in layout (opacity toggle) — conditionally rendering it
@@ -561,6 +602,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
   },
+  // Detection freeze: the exact frame-region shot, shown inside the scanner
+  // frame while a confirm sheet is up (slight inset so the corners stay visible).
+  frozenShot: { position: 'absolute', top: 4, left: 4, right: 4, bottom: 4, borderRadius: 10 },
   torchBtnActive: {
     backgroundColor: '#FFD54A',
     borderColor: '#FFD54A',
