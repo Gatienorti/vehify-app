@@ -85,7 +85,27 @@ const fullReport: ReportResponse = {
     },
     photoUrls: [],
     safety: { overall: 5, front_crash: 5, side_crash: 5, rollover: 4 },
-    fuelEconomy: { combined_mpg: 32, city_mpg: 28, highway_mpg: 39, annual_fuel_cost: 1650 },
+    fuelEconomy: {
+      combined_mpg: 32,
+      city_mpg: 28,
+      highway_mpg: 39,
+      annual_fuel_cost: 1650,
+      // Driver-reported ("Your MPG", 3+ drivers) + this week's pump price.
+      real_world_mpg: 30.4,
+      real_world_sample: 12,
+      annual_fuel_cost_current: 1450,
+      gas_price_per_gallon: 3.09,
+      gas_price_as_of: '2026-07-13',
+    },
+    // EV/plug-in only (null for gas cars) — incentives + charging density.
+    evOwnership: {
+      incentives: {
+        jurisdiction: 'NY',
+        count: 7,
+        highlights: [{ title: 'Federal Qualified Plug-In Electric Vehicle Tax Credit', type: 'TAX' }],
+      },
+      charging: { stationCount: 240, dcFastCount: 38, radiusMiles: 25 },
+    },
   },
   history: {
     accidents: 2,

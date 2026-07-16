@@ -21,23 +21,28 @@ interface Props {
   /** Final price (plate credit already applied by the caller). */
   price: number;
   submitting?: boolean;
+  /** Electric/plug-in vehicle — shows the ZIP input (charging density). */
+  isElectric?: boolean;
   onCancel: () => void;
   /** Buy with whatever was entered — undefined fields were skipped. */
-  onBuy: (mileage: number | undefined, askingPrice: number | undefined) => void;
+  onBuy: (mileage: number | undefined, askingPrice: number | undefined, zip: string | undefined) => void;
 }
 
 /**
- * The buy step as a bottom sheet — no separate screen. Two optional inputs
- * (they personalize the valuation + deal verdict), then purchase. Skipping
- * is always one tap: the inputs never block the sale.
+ * The buy step as a bottom sheet — no separate screen. Optional inputs
+ * (they personalize the valuation + deal verdict; EVs also get a ZIP for
+ * nearby-charging context), then purchase. Skipping is always one tap: the
+ * inputs never block the sale.
  */
-export default function BuyAnalysisSheet({ visible, price, submitting = false, onCancel, onBuy }: Props) {
+export default function BuyAnalysisSheet({ visible, price, submitting = false, isElectric = false, onCancel, onBuy }: Props) {
   const { colors, spacing, radius } = useTheme();
   const [mileageText, setMileageText] = useState('');
   const [askingPriceText, setAskingPriceText] = useState('');
+  const [zipText, setZipText] = useState('');
 
   const buy = () => {
-    onBuy(parseOptionalPositiveInt(mileageText), parseOptionalPositiveInt(askingPriceText));
+    const zip = /^\d{5}$/.test(zipText.trim()) ? zipText.trim() : undefined;
+    onBuy(parseOptionalPositiveInt(mileageText), parseOptionalPositiveInt(askingPriceText), zip);
   };
 
   return (
@@ -86,6 +91,23 @@ export default function BuyAnalysisSheet({ visible, price, submitting = false, o
             editable={!submitting}
             style={[styles.input, { color: colors.text, borderColor: colors.border, borderRadius: radius.md }]}
           />
+          {isElectric ? (
+            <>
+              <Text style={[styles.label, { color: colors.textMuted }]}>
+                Your ZIP (chargers near you)
+              </Text>
+              <TextInput
+                value={zipText}
+                onChangeText={setZipText}
+                placeholder="e.g. 10001"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                maxLength={5}
+                editable={!submitting}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, borderRadius: radius.md }]}
+              />
+            </>
+          ) : null}
 
           <PrimaryButton
             label={`Buy Buyer Report — ${formatUsd(price)}`}

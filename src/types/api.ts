@@ -72,6 +72,8 @@ export interface PurchaseStartRequest {
   mileage?: number;
   /** Optional seller's asking price (dollars) — powers the Deal verdict. */
   askingPrice?: number;
+  /** Optional buyer 5-digit ZIP — unlocks charging density on EV reports. */
+  zip?: string;
 }
 
 export interface PurchaseStartResponse {

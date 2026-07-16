@@ -56,14 +56,42 @@ export interface SafetyRating {
   rollover?: number;
 }
 
-/** EPA fuel economy estimates. */
+/** EPA fuel economy estimates, plus live enrichment when available. */
 export interface FuelEconomy {
   city_mpg?: number;
   highway_mpg?: number;
   combined_mpg: number;
+  /** EPA's static estimate (their baked-in fuel price assumption). */
   annual_fuel_cost?: number;
   co2_gpm?: number;
   fuel_type?: string;
+  /** Driver-reported average ("Your MPG") — only present with 3+ drivers. */
+  real_world_mpg?: number | null;
+  /** How many drivers shared data behind real_world_mpg. */
+  real_world_sample?: number | null;
+  /** Annual cost re-priced at this week's national pump price (grade-matched). */
+  annual_fuel_cost_current?: number | null;
+  gas_price_per_gallon?: number | null;
+  /** ISO date of the price week behind annual_fuel_cost_current. */
+  gas_price_as_of?: string | null;
+}
+
+/**
+ * EV/plug-in ownership context (electric vehicles only): purchase incentives
+ * for the buyer's jurisdiction and charging density near their ZIP (only when
+ * a ZIP was entered at purchase).
+ */
+export interface EvOwnership {
+  incentives: {
+    jurisdiction: string;
+    count: number;
+    highlights: { title: string; type?: string | null }[];
+  } | null;
+  charging: {
+    stationCount: number;
+    dcFastCount: number;
+    radiusMiles: number;
+  } | null;
 }
 
 /**
@@ -216,6 +244,8 @@ export interface BuyersAnalysis {
   safety?: SafetyRating | null;
   /** EPA fuel economy for this model, when on file. */
   fuelEconomy?: FuelEconomy | null;
+  /** EV/plug-in only — incentives + charging context. Null for gas cars. */
+  evOwnership?: EvOwnership | null;
 }
 
 /**

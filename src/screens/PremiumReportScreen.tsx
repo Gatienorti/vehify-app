@@ -21,6 +21,7 @@ import {
   TrendingDown,
   Users,
   Wrench,
+  Zap,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../theme';
@@ -141,7 +142,7 @@ function CollapsibleSection({
         {Icon ? <Icon size={17} color={alert ? colors.danger : colors.textMuted} strokeWidth={2.5} /> : null}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
         <View style={styles.collapseRight}>
-          <Text style={[styles.collapseSummary, { color: colors.textMuted }]}>{summary}</Text>
+          <Text numberOfLines={1} style={[styles.collapseSummary, { color: colors.textMuted }]}>{summary}</Text>
           <Chevron size={18} color={colors.textMuted} strokeWidth={2.5} />
         </View>
       </Pressable>
@@ -769,7 +770,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             closed pile folds away behind a count. */}
         {analysis.investigations ? (
           <CollapsibleSection
-            title="Federal defect investigations"
+            title="Investigations"
             icon={ShieldAlert}
             alert={analysis.investigations.open > 0}
             summary={`${analysis.investigations.total} on file${analysis.investigations.open > 0 ? ` · ${analysis.investigations.open} open` : ''}`}
@@ -818,7 +819,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         ) : null}
 
         <CollapsibleSection
-          title="Recalls & manufacturer records"
+          title="Recalls & notices"
           icon={Bell}
           alert={analysis.openRecalls.length > 0}
           summary={`${analysis.openRecalls.length} open`}
@@ -857,7 +858,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {/* NHTSA crash-test ratings for this model, when on file. */}
         {analysis.safety ? (
           <CollapsibleSection
-            title="Crash safety (NHTSA)"
+            title="Crash safety"
             icon={Star}
             summary={`${Math.max(0, Math.min(5, analysis.safety.overall))}/5 overall`}
             defaultOpen={!history}
@@ -886,7 +887,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {/* EPA fuel economy — snake_case fields are contract-accurate. */}
         {analysis.fuelEconomy ? (
           <CollapsibleSection
-            title="Fuel economy (EPA)"
+            title="Fuel economy"
             icon={Fuel}
             summary={`${analysis.fuelEconomy.combined_mpg} MPG combined`}
             defaultOpen={!history}
@@ -898,7 +899,31 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 value={`${analysis.fuelEconomy.city_mpg} / ${analysis.fuelEconomy.highway_mpg} MPG`}
               />
             ) : null}
-            {analysis.fuelEconomy.annual_fuel_cost ? (
+            {/* Driver-reported average vs the sticker — only sent with 3+ drivers. */}
+            {analysis.fuelEconomy.real_world_mpg ? (
+              <StatRow
+                label={`Real-world (${analysis.fuelEconomy.real_world_sample} drivers)`}
+                value={`${analysis.fuelEconomy.real_world_mpg} MPG`}
+              />
+            ) : null}
+            {/* Prefer the cost at THIS week's pump price; EPA's static
+                assumption is the fallback when the live price is off/down. */}
+            {analysis.fuelEconomy.annual_fuel_cost_current ? (
+              <>
+                <StatRow
+                  label={`Est. annual fuel cost (at $${analysis.fuelEconomy.gas_price_per_gallon?.toFixed(2)}/gal)`}
+                  value={`$${analysis.fuelEconomy.annual_fuel_cost_current.toLocaleString()}`}
+                />
+                {/* EIA ToS asks for attribution when their data is displayed —
+                    the agency name stays; no "Fuel price:" prefix. */}
+                <Text style={[styles.sourceNote, { color: colors.textMuted }]}>
+                  U.S. Energy Information Administration
+                  {analysis.fuelEconomy.gas_price_as_of
+                    ? `, week of ${shortDate(analysis.fuelEconomy.gas_price_as_of)}`
+                    : ''}
+                </Text>
+              </>
+            ) : analysis.fuelEconomy.annual_fuel_cost ? (
               <StatRow
                 label="Est. annual fuel cost"
                 value={`$${analysis.fuelEconomy.annual_fuel_cost.toLocaleString()}`}
@@ -906,6 +931,44 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             ) : null}
             {analysis.fuelEconomy.co2_gpm ? (
               <StatRow label="CO₂ emissions" value={`${analysis.fuelEconomy.co2_gpm} g/mi`} />
+            ) : null}
+          </CollapsibleSection>
+        ) : null}
+
+        {/* EV/plug-in only: incentives + charging near the buyer's ZIP. */}
+        {analysis.evOwnership ? (
+          <CollapsibleSection
+            title="EV ownership"
+            icon={Zap}
+            summary={
+              analysis.evOwnership.charging
+                ? `${analysis.evOwnership.charging.stationCount} chargers within ${analysis.evOwnership.charging.radiusMiles} mi`
+                : `${analysis.evOwnership.incentives?.count ?? 0} incentives may apply`
+            }
+            defaultOpen={!history}
+          >
+            {analysis.evOwnership.charging ? (
+              <StatRow
+                label={`Public chargers within ${analysis.evOwnership.charging.radiusMiles} mi`}
+                value={`${analysis.evOwnership.charging.stationCount} (${analysis.evOwnership.charging.dcFastCount} DC fast)`}
+              />
+            ) : null}
+            {analysis.evOwnership.incentives ? (
+              <>
+                <StatRow
+                  label="Incentives that may apply"
+                  value={`${analysis.evOwnership.incentives.count}`}
+                />
+                {analysis.evOwnership.incentives.highlights.map((h) => (
+                  <Text key={h.title} style={[styles.evIncentive, { color: colors.textMuted }]}>
+                    •  {h.title}
+                  </Text>
+                ))}
+                <Text style={[styles.evIncentive, { color: colors.textMuted }]}>
+                  Eligibility depends on the buyer, the sale and the exact vehicle — verify
+                  before counting on any credit.
+                </Text>
+              </>
             ) : null}
           </CollapsibleSection>
         ) : null}
@@ -927,12 +990,14 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 15, flexShrink: 0 },
   statValue: { fontSize: 15, fontWeight: '700', flex: 1, textAlign: 'right' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4 },
-  sectionTitle: { fontSize: 18, fontWeight: '800' },
-  collapseRight: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
-  collapseSummary: { fontSize: 13, fontWeight: '600' },
+  sectionTitle: { fontSize: 18, fontWeight: '800', flexShrink: 1 },
+  collapseRight: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 1 },
+  collapseSummary: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
   toggleRow: { paddingVertical: 12, alignItems: 'center' },
   toggleText: { fontSize: 14, fontWeight: '700' },
   recordRow: { paddingVertical: 10, gap: 2, borderBottomWidth: StyleSheet.hairlineWidth },
+  evIncentive: { fontSize: 13.5, lineHeight: 19, paddingVertical: 4 },
+  sourceNote: { fontSize: 12, lineHeight: 16, paddingTop: 6, paddingBottom: 2 },
   recordMeta: { fontSize: 12.5, fontWeight: '600' },
   recordBody: { fontSize: 14, lineHeight: 20 },
   flagStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
