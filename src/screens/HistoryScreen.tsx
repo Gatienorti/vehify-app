@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -24,20 +24,35 @@ function when(iso: string): string {
   return sameDay ? 'Checked today' : `Checked ${d.toLocaleDateString()}`;
 }
 
+/** Spinner shows at least this long on landing — one clean render, no flicker. */
+const SETTLE_MIN_MS = 500;
+
 export default function HistoryScreen({ navigation }: Props) {
   const { colors, spacing } = useTheme();
   // Server is the source of truth (keyed on account or device). Local history
-  // is only an instant-paint cache: shown until the server responds, and the
-  // graceful fallback when offline.
-  const { data, isLoading, refetch } = useGetHistoryQuery();
+  // is only an instant-paint cache: the fallback when the server is offline.
+  const { data, refetch } = useGetHistoryQuery();
   const localEntries = useAppSelector((s) => s.history.entries);
   const entries = data ?? localEntries;
 
-  // Keep the feed fresh when returning to the tab (a lookup elsewhere records
-  // server-side; tag invalidation also refetches, this covers cold returns).
+  // Settle gate: on every landing, hold a spinner until the fresh server feed
+  // is in (min SETTLE_MIN_MS) — rendering local data first and swapping to the
+  // server's version mid-look reads as a flicker of reordering/badge changes.
+  const [settled, setSettled] = useState(false);
   useFocusEffect(
     useCallback(() => {
-      void refetch();
+      setSettled(false);
+      const started = Date.now();
+      let alive = true;
+      void refetch().finally(() => {
+        const wait = Math.max(0, SETTLE_MIN_MS - (Date.now() - started));
+        setTimeout(() => {
+          if (alive) setSettled(true);
+        }, wait);
+      });
+      return () => {
+        alive = false;
+      };
     }, [refetch]),
   );
 
@@ -50,7 +65,7 @@ export default function HistoryScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <Text style={[styles.header, { color: colors.text, paddingHorizontal: spacing.lg }]}>History</Text>
-      {showEmpty && isLoading ? (
+      {!settled ? (
         <View style={styles.empty}>
           <ActivityIndicator color={colors.primary} />
         </View>
