@@ -39,12 +39,14 @@ export function isValidVin(raw: string): boolean {
  */
 export function extractVinFromBarcode(raw: string): string | null {
   const s = normalizeVin(raw);
-  if (isValidVin(s)) return s;
-  const matches = s.match(/[A-HJ-NPR-Z0-9]{17}/g);
-  if (matches) {
-    for (const m of matches) {
-      if (isValidVin(m)) return m;
-    }
+  if (isValidVin(s) && hasValidCheckDigit(s)) return s;
+  // Sliding window with the ISO check digit required: DMV document barcodes
+  // (AAMVA PDF417 payloads) are long data blobs — the header alone yields
+  // VIN-shaped junk ("AAMVA36001106VH00…"), while the REAL VIN sits somewhere
+  // mid-payload. The checksum is what tells them apart.
+  for (let i = 0; i + 17 <= s.length; i++) {
+    const w = s.slice(i, i + 17);
+    if (isValidVin(w) && hasValidCheckDigit(w)) return w;
   }
   return null;
 }

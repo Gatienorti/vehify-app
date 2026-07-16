@@ -54,8 +54,6 @@ export default function ScanScreen({ navigation, route }: Props) {
 
   // Rolling buffer of plate reads from fresh photos, voted once enough agree.
   const plateReadsRef = useRef<string[]>([]);
-  // Last tick's text-VIN — a candidate must repeat on the NEXT tick to count.
-  const vinReadRef = useRef<string | null>(null);
   // Latest tick's frame shot; on detection it's promoted to the freeze-frame
   // shown over the scanner (spec §6: "freeze frame, show detected text").
   const lastShotRef = useRef<string | null>(null);
@@ -79,7 +77,7 @@ export default function ScanScreen({ navigation, route }: Props) {
     });
   };
   const stateVotesRef = useRef<Map<string, number>>(new Map());
-  const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); vinReadRef.current = null; };
+  const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); };
 
   // Pinch-to-zoom for the camera (0 = none … 1 = max). Helps read a distant plate.
   const [zoom, setZoom] = useState(0);
@@ -199,10 +197,10 @@ export default function ScanScreen({ navigation, route }: Props) {
   }, [previewActive]);
 
   // Unified scan loop: every tick takes one fresh photo and auto-detects.
-  // A valid 17-char VIN in the frame wins immediately (free lookup); otherwise
-  // plate reads accumulate until 2 confident ticks agree, then the confirm
-  // sheet opens. (VIN barcodes/QR never reach here — the live preview's
-  // onBarcodeScanned handles those with no photo at all.)
+  // Plate reads accumulate until 2 confident ticks agree, then the confirm
+  // sheet opens. VINs are barcode/QR-only (onBarcodeScanned on the live
+  // preview) — text-VIN OCR is retired: dense documents (registration cards)
+  // produce checksum-lucky junk that no consensus rule reliably kills.
   useEffect(() => {
     if (!cameraActive) return;
     clearReads();
@@ -220,25 +218,6 @@ export default function ScanScreen({ navigation, route }: Props) {
         const read = await readPlateOnce(camRef.current, frameMeasureRef.current, { readState: !stateLocked });
         if (!read) return;
         keepShot(read.photoUri);
-
-        // Text-VINs need 2 CONSECUTIVE agreeing ticks before the sheet opens.
-        // A checksum-valid frankenstring from a dense document (registration
-        // card) varies tick to tick; a real printed VIN repeats. Barcode VINs
-        // skip this — they arrive via onBarcodeScanned, not OCR.
-        if (read.vin && !handledRef.current) {
-          if (vinReadRef.current === read.vin) {
-            handledRef.current = true;
-            track('vin_detected', { source: 'ocr' });
-            freezeShot();
-            setPendingVin(read.vin);
-            clearReads();
-            vinReadRef.current = null;
-            return;
-          }
-          vinReadRef.current = read.vin;
-          return;
-        }
-        vinReadRef.current = null; // streak broken — a tick without that VIN
 
         if (read.state) {
           stateVotesRef.current.set(read.state, (stateVotesRef.current.get(read.state) ?? 0) + 1);
@@ -462,7 +441,7 @@ export default function ScanScreen({ navigation, route }: Props) {
           {/* Always in layout (opacity toggle) — conditionally rendering it
               re-centers the stage and moves the frame between idle/scanning. */}
           <Text style={[styles.hint, !scanning && styles.hintHidden]}>
-            Point at a license plate or VIN
+            Point at a license plate or VIN barcode
           </Text>
           {zoom > 0.01 ? (
             <Text style={styles.zoomBadge}>{`${(1 + zoom * 4).toFixed(1)}×`}</Text>
