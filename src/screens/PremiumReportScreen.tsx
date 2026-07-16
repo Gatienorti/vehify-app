@@ -15,6 +15,7 @@ import {
   Lightbulb,
   Lock,
   ShieldAlert,
+  ShieldCheck,
   Star,
   Tag,
   TrendingDown,
@@ -80,18 +81,27 @@ function Section({
   title,
   icon,
   alert,
+  premium,
   children,
 }: {
   title: string;
   icon?: LucideIcon;
   alert?: boolean;
+  /** Complete-History (per-VIN) content — subtle brand accent, never severity colors. */
+  premium?: boolean;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();
   return (
     <>
       <SectionHeader title={title} icon={icon} alert={alert} />
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+          premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
+        ]}
+      >
         {children}
       </View>
     </>
@@ -108,12 +118,15 @@ function CollapsibleSection({
   icon: Icon,
   summary,
   defaultOpen = false,
+  premium,
   children,
 }: {
   title: string;
   icon?: LucideIcon;
   summary: string;
   defaultOpen?: boolean;
+  /** Complete-History (per-VIN) content — subtle brand accent, never severity colors. */
+  premium?: boolean;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();
@@ -130,11 +143,37 @@ function CollapsibleSection({
         </View>
       </Pressable>
       {open ? (
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+            premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
+          ]}
+        >
           {children}
         </View>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Group banner for the Complete-History block: frames the per-VIN records as
+ * one premium unit ("what your upgrade unlocked"). Brand accent only — the
+ * severity palette stays reserved for actual findings.
+ */
+function PremiumGroupHeader() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.premiumGroup, { borderColor: colors.premium, backgroundColor: `${colors.premium}14` }]}>
+      <ShieldCheck size={18} color={colors.premium} strokeWidth={2.5} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.premiumGroupTitle, { color: colors.text }]}>Complete Vehicle History</Text>
+        <Text style={[styles.premiumGroupSub, { color: colors.textMuted }]}>
+          Records for this exact VIN
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -556,7 +595,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             tier (history present), never on the analysis tier. We never fake a
             timeline or claim a rollback check we didn't run. */}
         {history && analysis.mileageHistory.length ? (
-          <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected}>
+          <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected} premium>
             <StatRow
               label="Rollback check"
               value={
@@ -731,10 +770,13 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </Section>
         ) : null}
 
-        {/* Vehicle History — only on the complete_history tier. */}
+        {/* Vehicle History — only on the complete_history tier. Framed as one
+            premium unit: group banner + brand-accented cards (what the +$3
+            upgrade unlocked), never severity colors. */}
         {history ? (
           <>
-            <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0}>
+            <PremiumGroupHeader />
+            <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0} premium>
               <StatRow label="Accidents reported" value={String(history.accidents)} bad={history.accidents > 0} />
               <StatRow label="Title brands" value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'} bad={history.titleBrands.length > 0} />
               <StatRow label="Theft records" value={String(history.thefts)} bad={history.thefts > 0} />
@@ -745,7 +787,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             {/* The report's own findings — severity marks the DOT, not whole
                 paragraphs; red text is reserved for Alert-level findings. */}
             {conditionFlags.length ? (
-              <Section title="Report red flags" icon={AlertTriangle} alert>
+              <Section title="Report red flags" icon={AlertTriangle} alert premium>
                 {conditionFlags.map((f, i) => {
                   const sevColor =
                     f.severity === 'Alert'
@@ -792,7 +834,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
             {/* Ownership timeline — usage patterns, never a person's identity. */}
             {history.ownerDetails?.length ? (
-              <Section title="Ownership timeline" icon={Users}>
+              <Section title="Ownership timeline" icon={Users} premium>
                 {history.ownerDetails.map((o) => (
                   <StatRow
                     key={`owner-${o.owner}`}
@@ -805,7 +847,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
             {/* Empty sections shrink to one muted line — no empty cards. */}
             {history.auctionRecords.length ? (
-              <Section title="Auction history" icon={Gavel}>
+              <Section title="Auction history" icon={Gavel} premium>
                 {history.auctionRecords.map((a, i) => (
                   <StatRow
                     key={`${i}-${a.date}`}
@@ -825,6 +867,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 title="Service history"
                 icon={Wrench}
                 summary={`${history.serviceHistory.length} records`}
+                premium
               >
                 {history.serviceHistory.map((s, i) => (
                   <RecordRow
@@ -851,6 +894,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   card: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4 },
+  premiumGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginTop: 8 },
+  premiumGroupTitle: { fontSize: 15, fontWeight: '700' },
+  premiumGroupSub: { fontSize: 12, marginTop: 1 },
   cardBody: { fontSize: 14, lineHeight: 20, paddingVertical: 12 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   statLabel: { fontSize: 15, flexShrink: 0 },
