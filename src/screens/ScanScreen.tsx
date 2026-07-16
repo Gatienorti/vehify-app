@@ -384,10 +384,46 @@ export default function ScanScreen({ navigation, route }: Props) {
 
   // A barcode/QR is always a VIN — plates never carry them (covers Tesla's
   // door-jamb QR as well as Code39/128/DataMatrix/PDF417 VIN barcodes).
+  // A barcode only counts when it sits INSIDE the scanner frame — same rule
+  // the plate OCR already follows (it crops to the frame). Aim = intent, and
+  // two barcodes in view (test sheets, cluttered documents) can't race.
+  // Fails open when the platform gives no geometry.
+  const barcodeInFrame = (result: BarcodeScanningResult): boolean => {
+    const f = frameMeasureRef.current;
+    if (!f) return true;
+    const pts = result.cornerPoints?.length
+      ? result.cornerPoints
+      : result.bounds
+        ? [{
+            x: result.bounds.origin.x + result.bounds.size.width / 2,
+            y: result.bounds.origin.y + result.bounds.size.height / 2,
+          }]
+        : null;
+    if (!pts) return true;
+    let cx = 0;
+    let cy = 0;
+    for (const pt of pts) { cx += pt.x; cy += pt.y; }
+    cx /= pts.length;
+    cy /= pts.length;
+    // Some platforms report normalized [0..1] coordinates — scale to the view.
+    if (cx <= 1 && cy <= 1) {
+      cx *= f.previewWidth;
+      cy *= f.previewHeight;
+    }
+    const PAD = 24; // forgiving edge — brackets are a guide, not a laser cut
+    const left = f.pageX - f.previewX - PAD;
+    const top = f.pageY - f.previewY - PAD;
+    return cx >= left && cx <= left + f.width + PAD * 2 && cy >= top && cy <= top + f.height + PAD * 2;
+  };
+
   const onBarcodeScanned = useCallback(
     (result: BarcodeScanningResult) => {
       if (!scanning) return; // ignore until the user starts scanning
       if (handledRef.current) return;
+      if (!barcodeInFrame(result)) {
+        if (__DEV__) console.log(`[barcode] ${result.type} outside frame — ignored`);
+        return;
+      }
       const vin = extractVinFromBarcode(result.data ?? '');
       if (__DEV__) {
         // Log EVERY decode — silence means the symbology never decoded at all
