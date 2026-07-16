@@ -64,7 +64,7 @@ export default function VinConfirmSheet({
         <View style={styles.grabber} />
         <Text style={[styles.title, { color: colors.text }]}>Confirm the VIN</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Check the 17 characters — tap to fix any OCR errors before searching.
+          Make sure it matches the VIN on the windshield or driver&apos;s door jamb.
         </Text>
 
         <View style={[styles.vinBox, { borderColor: colors.border, borderRadius: radius.md, marginTop: spacing.md }]}>
@@ -87,15 +87,11 @@ export default function VinConfirmSheet({
           <Text style={[styles.error, { color: colors.danger }]}>{error ?? serverError}</Text>
         ) : null}
 
-        <Text style={[styles.freeNote, { color: colors.textMuted, marginTop: spacing.md }]}>
-          VIN lookups are free — they decode using NHTSA&apos;s public database.
-        </Text>
-
         <PrimaryButton
           label="Search VIN — free"
           loading={submitting}
           onPress={confirm}
-          style={{ marginTop: spacing.md }}
+          style={{ marginTop: spacing.lg }}
         />
         <Pressable onPress={onCancel} disabled={submitting} style={styles.cancelRow} hitSlop={8}>
           <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel &amp; keep scanning</Text>
@@ -116,7 +112,6 @@ const styles = StyleSheet.create({
   vinBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingHorizontal: 14 },
   vinInput: { flex: 1, fontSize: 18, fontWeight: '700', letterSpacing: 2, paddingVertical: 14 },
   error: { fontSize: 14, marginTop: 8 },
-  freeNote: { fontSize: 13, lineHeight: 18 },
   cancelRow: { alignItems: 'center', paddingVertical: 14 },
   cancelText: { fontSize: 15, fontWeight: '600' },
 });
