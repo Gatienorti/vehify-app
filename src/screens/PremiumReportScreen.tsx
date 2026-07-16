@@ -35,6 +35,7 @@ import {
   formatPriceDelta,
   nearestMileageIndex,
   sentenceCase,
+  shortDate,
   valueBarWidthPct,
 } from '../utils/report';
 import type { StackScreenProps } from '../types/navigation';
@@ -458,6 +459,47 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         </Section>
         )}
 
+        {/* Recent asking prices for comparable cars — REAL market evidence, so
+            it sits right after the value estimate to corroborate it (and when
+            no estimate exists, it IS the pricing signal). Accumulating pool:
+            each point stamped with its seen date; older ones age out server-
+            side at ~60 days. Vendor-neutral by design: the marketplace source
+            is never named. Auctions and branded-title cars are filtered out
+            server-side. */}
+        {analysis.listingComps?.items.length ? (
+          <Section title="Comparable listings" icon={Car}>
+            <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
+              {analysis.listingComps.count} recent asking{' '}
+              {analysis.listingComps.count === 1 ? 'price' : 'prices'} for similar cars: $
+              {analysis.listingComps.low.toLocaleString()}–$
+              {analysis.listingComps.high.toLocaleString()} (average $
+              {analysis.listingComps.average.toLocaleString()}).
+              {analysis.listingComps.count > analysis.listingComps.items.length
+                ? ` Newest ${analysis.listingComps.items.length} shown.`
+                : ''}{' '}
+              Asking prices, not sale prices — older listings may no longer be available.
+            </Text>
+            {analysis.listingComps.items.map((c, i) => (
+              <Pressable
+                key={`${i}-${c.price}`}
+                disabled={!c.url}
+                onPress={() => (c.url ? Linking.openURL(c.url) : undefined)}
+              >
+                <StatRow
+                  label={[
+                    c.mileage != null ? `${c.mileage.toLocaleString()} mi` : 'Mileage not listed',
+                    c.titleStatus ? `${c.titleStatus} title` : null,
+                    c.seenAt ? `seen ${shortDate(c.seenAt)}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  value={`$${c.price.toLocaleString()}`}
+                />
+              </Pressable>
+            ))}
+          </Section>
+        ) : null}
+
         {/* How mileage moves the price — negotiation ammo, no chart library.
             This is a projection from the single market estimate, NOT observed
             per-mile sale data, so it's labelled as an estimate up front. */}
@@ -507,38 +549,6 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 Highlighted row is closest to your entered odometer reading.
               </Text>
             ) : null}
-          </Section>
-        ) : null}
-
-        {/* Comparable cars listed for sale right now — real asking prices with
-            odometer context (negotiation ammo). Vendor-neutral by design: the
-            marketplace source is never named. Auctions and branded-title cars
-            are filtered out server-side. */}
-        {analysis.listingComps?.items.length ? (
-          <Section title="Comparable listings" icon={Car}>
-            <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
-              {analysis.listingComps.count} similar{' '}
-              {analysis.listingComps.count === 1 ? 'car' : 'cars'} listed for sale right now,
-              asking ${analysis.listingComps.low.toLocaleString()}–$
-              {analysis.listingComps.high.toLocaleString()} (average $
-              {analysis.listingComps.average.toLocaleString()}). Asking prices, not sale prices.
-            </Text>
-            {analysis.listingComps.items.map((c, i) => (
-              <Pressable
-                key={`${i}-${c.price}`}
-                disabled={!c.url}
-                onPress={() => (c.url ? Linking.openURL(c.url) : undefined)}
-              >
-                <StatRow
-                  label={
-                    (c.mileage != null
-                      ? `${c.mileage.toLocaleString()} mi`
-                      : 'Mileage not listed') + (c.titleStatus ? ` · ${c.titleStatus} title` : '')
-                  }
-                  value={`$${c.price.toLocaleString()}`}
-                />
-              </Pressable>
-            ))}
           </Section>
         ) : null}
 

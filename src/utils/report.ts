@@ -43,6 +43,13 @@ export function sentenceCase(text: string): string {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
+/** "2026-07-16" → "Jul 16" — compact seen-date for comp rows. */
+export function shortDate(isoDate: string): string {
+  const d = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 /** Index of the curve point closest to the buyer's entered mileage. */
 export function nearestMileageIndex(
   points: { mileage: number; estimate: number }[],

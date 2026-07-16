@@ -180,15 +180,19 @@ export interface BuyersAnalysis {
   manufacturerCommunications: number;
   complaintTrends?: string | null;
   /**
-   * Comparable cars currently listed for sale (negotiation color) — a
-   * rolling snapshot refreshed every few days. Vendor-neutral: never name
-   * the marketplace source anywhere in the UI.
+   * Recent asking prices for comparable cars (negotiation color) — an
+   * accumulating pool refreshed every few days (older points age out at
+   * ~60 days), each stamped with the date it was seen so nothing pretends
+   * to be more current than it is. Vendor-neutral: never name the
+   * marketplace source anywhere in the UI.
    */
   listingComps?: {
     count: number;
     low: number;
     high: number;
     average: number;
+    /** ISO date of the newest data point in the pool. */
+    asOf?: string | null;
     items: {
       title: string;
       price: number;
@@ -196,6 +200,8 @@ export interface BuyersAnalysis {
       mileage?: number | null;
       /** Title status as listed (e.g. "Clean") — branded titles are filtered out upstream. */
       titleStatus?: string | null;
+      /** ISO date this asking price was observed. */
+      seenAt?: string | null;
       url: string | null;
     }[];
   } | null;
