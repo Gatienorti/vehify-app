@@ -39,11 +39,13 @@ export function isValidVin(raw: string): boolean {
  */
 export function extractVinFromBarcode(raw: string): string | null {
   const s = normalizeVin(raw);
+  // A real VIN barcode's payload IS the VIN (Tesla QR, door-jamb Code39 with
+  // 'I' wrappers) — a few chars of slack at most. Long payloads are DMV/AAMVA
+  // document blobs: they rarely contain the VIN, and with ~dozens of 17-char
+  // windows the ISO checksum (rejects only ~10/11) is statistically GUARANTEED
+  // to bless some junk slice ("620042ZR02040015Z"). Reject them outright.
+  if (s.length > 21) return null;
   if (isValidVin(s) && hasValidCheckDigit(s)) return s;
-  // Sliding window with the ISO check digit required: DMV document barcodes
-  // (AAMVA PDF417 payloads) are long data blobs — the header alone yields
-  // VIN-shaped junk ("AAMVA36001106VH00…"), while the REAL VIN sits somewhere
-  // mid-payload. The checksum is what tells them apart.
   for (let i = 0; i + 17 <= s.length; i++) {
     const w = s.slice(i, i + 17);
     if (isValidVin(w) && hasValidCheckDigit(w)) return w;

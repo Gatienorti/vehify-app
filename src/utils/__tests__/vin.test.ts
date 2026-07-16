@@ -41,11 +41,16 @@ describe('vin', () => {
       expect(extractVinFromBarcode('1HGCM82634A004352')).toBeNull();
     });
 
-    it('finds the real VIN inside a DMV AAMVA blob (the temp-registration bug)', () => {
-      // PDF417 document barcodes are long payloads: header junk is VIN-shaped
-      // ("AAMVA36001106VH00…") but fails the checksum; the true VIN sits
-      // mid-payload and must be the one extracted.
-      expect(extractVinFromBarcode(`ANSI AAMVA36001106VH00DL123 ${VIN} DCS9982025`)).toBe(VIN);
+    it('rejects DMV/AAMVA document blobs outright (the temp-registration bug)', () => {
+      // Real payload from a NY temp registration: the window
+      // "620042ZR02040015Z" passes the ISO checksum by luck. Long payloads
+      // offer dozens of windows, so a lucky slice is near-guaranteed —
+      // document barcodes are never trusted as VIN sources.
+      expect(
+        extractVinFromBarcode('@\nAAMVA36001005VH00670058RG01250037ZV01620042ZR02040015ZZ0'),
+      ).toBeNull();
+      // Even a blob CONTAINING a real VIN is rejected — length is the filter.
+      expect(extractVinFromBarcode(`ANSI AAMVA36001106VH00DL123 ${VIN} DCS9982025`)).toBeNull();
     });
 
     it('returns null when there is no valid VIN', () => {

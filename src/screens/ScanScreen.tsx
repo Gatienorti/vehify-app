@@ -58,6 +58,14 @@ export default function ScanScreen({ navigation, route }: Props) {
   // shown over the scanner (spec §6: "freeze frame, show detected text").
   const lastShotRef = useRef<string | null>(null);
   const [frozenShot, setFrozenShot] = useState<string | null>(null);
+  // Full-preview freeze for barcode hits (no frame crop exists for those).
+  const [frozenFull, setFrozenFullState] = useState<string | null>(null);
+  const setFrozenFull = (uri: string | null) => {
+    setFrozenFullState((prev) => {
+      if (prev && prev !== uri) discardShot(prev);
+      return uri;
+    });
+  };
   const keepShot = (uri: string | null) => {
     if (lastShotRef.current && lastShotRef.current !== uri) discardShot(lastShotRef.current);
     lastShotRef.current = uri;
@@ -70,12 +78,17 @@ export default function ScanScreen({ navigation, route }: Props) {
       return shot;
     });
   };
-  const unfreezeShot = () => {
+  // Stable (setState + refs only) so callbacks can depend on it without churn.
+  const unfreezeShot = useCallback(() => {
     setFrozenShot((prev) => {
       if (prev) discardShot(prev);
       return null;
     });
-  };
+    setFrozenFullState((prev) => {
+      if (prev) discardShot(prev);
+      return null;
+    });
+  }, []);
   const stateVotesRef = useRef<Map<string, number>>(new Map());
   const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); };
 
@@ -287,7 +300,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         setLookupError("Couldn't reach the server. Check your connection and try again.");
       }
     },
-    [lookupVin, recordLookup, navigation],
+    [lookupVin, recordLookup, navigation, unfreezeShot],
   );
 
   // Paid $0.25 plate lookup (tier 2), RESOLVE-THEN-CHARGE: start() resolves the
@@ -349,7 +362,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         setLookupError("The lookup didn't go through. Check your connection and try again.");
       }
     },
-    [startPlatePurchase, confirmPlatePurchase, navigation],
+    [startPlatePurchase, confirmPlatePurchase, navigation, unfreezeShot],
   );
 
   // Manual plate entry → same editable confirm sheet
@@ -366,16 +379,38 @@ export default function ScanScreen({ navigation, route }: Props) {
       if (!scanning) return; // ignore until the user starts scanning
       if (handledRef.current) return;
       const vin = extractVinFromBarcode(result.data ?? '');
-      if (!vin) {
-        // Common + correct: document barcodes (registration cards, insurance
-        // slips) encode control numbers, not VINs. Log so it's diagnosable.
-        if (__DEV__) {
-          console.log(`[barcode] ${result.type} decoded, no VIN in payload: "${(result.data ?? '').slice(0, 40)}"`);
-        }
-        return;
+      if (__DEV__) {
+        // Log EVERY decode — silence means the symbology never decoded at all
+        // (blur/glare/too small), which needs different debugging than a
+        // VIN-less payload (document barcodes carry control numbers).
+        console.log(`[barcode] ${result.type} -> ${vin ?? 'no VIN'} | payload: "${(result.data ?? '').slice(0, 60)}"`);
       }
+      if (!vin) return;
       handledRef.current = true;
       track('vin_detected', { source: 'barcode' });
+      // Freeze what the user is aiming at: barcodes decode off the live feed
+      // (no photo exists), so snap one. The OCR loop usually has the camera
+      // mid-photo when a barcode fires — retry briefly instead of skipping,
+      // or the preview visibly keeps moving behind the sheet. Best-effort:
+      // the prompt opens regardless.
+      const snapFreeze = (attempt: number) => {
+        if (attempt >= 4) return;
+        if (readingRef.current || !camRef.current) {
+          setTimeout(() => snapFreeze(attempt + 1), 300);
+          return;
+        }
+        readingRef.current = true;
+        camRef.current
+          .takePictureAsync({ skipProcessing: false, quality: 0.5 })
+          .then((photo) => {
+            if (photo?.uri) setFrozenFull(photo.uri);
+          })
+          .catch(() => {})
+          .finally(() => {
+            readingRef.current = false;
+          });
+      };
+      snapFreeze(0);
       setPendingVin(vin);
     },
     [scanning],
@@ -410,6 +445,9 @@ export default function ScanScreen({ navigation, route }: Props) {
             barcodeScannerSettings={{ barcodeTypes: [...VIN_BARCODES] }}
             onBarcodeScanned={onBarcodeScanned}
           />
+          {frozenFull ? (
+            <Image source={{ uri: frozenFull }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : null}
           {/* Darken the idle preview a touch so the frame + button pop. */}
           <View style={[styles.scrim, !scanning && styles.scrimIdle]} pointerEvents="none" />
         </>
