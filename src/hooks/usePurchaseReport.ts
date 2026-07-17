@@ -12,7 +12,6 @@ interface BuyOptions {
   askingPrice?: number;
   /** Buyer's 5-digit ZIP — unlocks charging density on EV reports. */
   zip?: string;
-  hasPlateCredit?: boolean;
 }
 
 /**
@@ -34,7 +33,6 @@ export function usePurchaseReport() {
   const buy = useCallback(
     async (vin: string, tier: PaidTier, opts: BuyOptions = {}): Promise<PurchaseConfirmResponse> => {
       track('premium_purchase_started', { vin, tier });
-      if (tier === 'buyers_analysis' && opts.hasPlateCredit) track('plate_credit_applied', { vin });
       if (opts.mileage !== undefined) track('mileage_entered', { vin });
       if (opts.askingPrice !== undefined) track('asking_price_entered', { vin });
       setBuying(true);

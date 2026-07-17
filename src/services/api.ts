@@ -19,10 +19,6 @@ import type {
   PurchaseFeedItem,
   PlateLookupRequest,
   PlateLookupResponse,
-  PlatePurchaseConfirmRequest,
-  PlatePurchaseConfirmResponse,
-  PlatePurchaseStartRequest,
-  PlatePurchaseStartResponse,
   PlateRefreshRequest,
   PurchaseConfirmRequest,
   PurchaseConfirmResponse,
@@ -72,18 +68,6 @@ export const api = createApi({
 
     refreshPlate: builder.mutation<PlateLookupResponse, PlateRefreshRequest>({
       query: (body) => ({ url: '/lookup/plate/refresh', method: 'POST', body }),
-    }),
-
-    // Paid $0.25 plate lookup (tier 2). Two-phase mock IAP like reports;
-    // confirm runs the plate→VIN lookup inline and returns the match (or
-    // found:false on a no-hit — the paid record is kept server-side).
-    startPlatePurchase: builder.mutation<PlatePurchaseStartResponse, PlatePurchaseStartRequest>({
-      query: (body) => ({ url: '/plate/purchase/start', method: 'POST', body }),
-    }),
-
-    confirmPlatePurchase: builder.mutation<PlatePurchaseConfirmResponse, PlatePurchaseConfirmRequest>({
-      query: (body) => ({ url: '/plate/purchase/confirm', method: 'POST', body }),
-      invalidatesTags: ['History'],
     }),
 
     getVehicleBasic: builder.query<BasicVehicleResponse, string>({
@@ -207,8 +191,6 @@ export const {
   useLookupVinMutation,
   useLookupPlateMutation,
   useRefreshPlateMutation,
-  useStartPlatePurchaseMutation,
-  useConfirmPlatePurchaseMutation,
   useGetVehicleBasicQuery,
   useStartPurchaseMutation,
   useConfirmPurchaseMutation,

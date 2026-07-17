@@ -17,12 +17,10 @@ import ScanConfirmSheet from '../components/ScanConfirmSheet';
 import VinConfirmSheet from '../components/VinConfirmSheet';
 import ScannerFrame from '../components/ScannerFrame';
 import { track } from '../config/analytics';
-import { PLATE_PRODUCT_ID } from '../config/pricing';
 import {
-  useConfirmPlatePurchaseMutation,
   useGetPurchasesQuery,
+  useLookupPlateMutation,
   useLookupVinMutation,
-  useStartPlatePurchaseMutation,
 } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
 import { extractVinFromBarcode } from '../utils/vin';
@@ -104,8 +102,7 @@ export default function ScanScreen({ navigation, route }: Props) {
   const [torch, setTorch] = useState(false);
 
   const [lookupVin, vinState] = useLookupVinMutation();
-  const [startPlatePurchase, plateStartState] = useStartPlatePurchaseMutation();
-  const [confirmPlatePurchase, plateConfirmState] = useConfirmPlatePurchaseMutation();
+  const [lookupPlate, plateState] = useLookupPlateMutation();
   const recordLookup = useRecordLookup();
   // Owned reports, readable inside stable callbacks without re-creating them.
   // Owned reports from the SERVER (source of truth) — never the local cache,
@@ -115,11 +112,7 @@ export default function ScanScreen({ navigation, route }: Props) {
   useEffect(() => {
     purchasesRef.current = purchases;
   }, [purchases]);
-  const submitting =
-    vinState.isLoading || plateStartState.isLoading || plateConfirmState.isLoading;
-  // A confirm-phase failure keeps the started purchase token so retrying the
-  // same plate re-runs ONLY the confirm — never minting a second $0.25 charge.
-  const plateTokenRef = useRef<{ key: string; token: string } | null>(null);
+  const submitting = vinState.isLoading || plateState.isLoading;
   const submittingRef = useRef(false);
   useEffect(() => { submittingRef.current = submitting; }, [submitting]);
 
@@ -313,66 +306,40 @@ export default function ScanScreen({ navigation, route }: Props) {
     [lookupVin, recordLookup, navigation, unfreezeShot],
   );
 
-  // Paid $0.25 plate lookup (tier 2), RESOLVE-THEN-CHARGE: start() resolves the
-  // plate first and only returns a token on a hit. A no-hit is surfaced here
-  // WITHOUT ever charging (no store purchase is triggered). On a hit we run the
-  // purchase (mock IAP until RevenueCat ships), then confirm to reveal the VIN.
+  // FREE plate→VIN lookup (funnel opener — the paid reports carry the
+  // economics). Cache-first server-side; a no-hit steers to free VIN entry.
   // Fires ONLY from the confirm sheet's explicit button, never from camera frames.
-  const doPlatePurchase = useCallback(
+  const doPlateLookup = useCallback(
     async (plate: string, state: string) => {
-      track('plate_purchase_started', { state });
       setLookupError(null);
-      const attemptKey = `${plate}|${state}`;
       try {
-        let token = plateTokenRef.current?.key === attemptKey ? plateTokenRef.current.token : null;
-        if (!token) {
-          const start = await startPlatePurchase({
-            plate,
-            state,
-            productId: PLATE_PRODUCT_ID,
-          }).unwrap();
-
-          // No match → the user is NOT charged. Steer to free VIN entry.
-          if (!start.found) {
-            plateTokenRef.current = null;
-            setSheetOpen(false);
-            setPendingPlate(null);
-            unfreezeShot();
-            track('plate_purchase_no_hit', { state });
-            Alert.alert(
-              'No vehicle found for this plate',
-              'We searched but no match came back — so there’s no charge. Enter the VIN instead; VIN lookups are free and exact.',
-              [
-                { text: 'Enter VIN', onPress: () => setSheetOpen(true) },
-                { text: 'Back', style: 'cancel' },
-              ],
-            );
-            return;
-          }
-
-          token = start.purchaseToken;
-          plateTokenRef.current = { key: attemptKey, token };
-        }
-
-        // TODO(RevenueCat): trigger the $0.25 store purchase here before
-        // confirming. Mocked until RevenueCat lands.
-        const res = await confirmPlatePurchase({
-          purchaseToken: token,
-          platform: 'ios',
-          appStoreTransactionId: `mock-txn-plate-${token}`,
-        }).unwrap();
-        plateTokenRef.current = null;
+        const res = await lookupPlate({ plate, state }).unwrap();
         setSheetOpen(false);
         setPendingPlate(null);
         unfreezeShot();
-        track('plate_purchase_completed', { state, source: res.source });
+        track(res.source === 'cache' ? 'plate_cache_hit' : 'plate_cache_miss', { state });
         navigation.navigate('VehicleMatch', { result: res, plate, state });
-      } catch {
-        track('plate_purchase_failed', { state });
+      } catch (e) {
+        const status = (e as { status?: number }).status;
+        if (status === 404) {
+          // No match on record — not an error, steer to the exact free path.
+          setSheetOpen(false);
+          setPendingPlate(null);
+          unfreezeShot();
+          Alert.alert(
+            'No vehicle found for this plate',
+            'We couldn’t match this plate. Plates can be transferred or data can be delayed. Enter the VIN instead — VIN lookups are exact.',
+            [
+              { text: 'Enter VIN', onPress: () => setSheetOpen(true) },
+              { text: 'Back', style: 'cancel' },
+            ],
+          );
+          return;
+        }
         setLookupError("The lookup didn't go through. Check your connection and try again.");
       }
     },
-    [startPlatePurchase, confirmPlatePurchase, navigation, unfreezeShot],
+    [lookupPlate, navigation, unfreezeShot],
   );
 
   // Manual plate entry → same editable confirm sheet
@@ -587,7 +554,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         onCancel={resetPending}
         onConfirm={(plate, state) => {
           track('scan_confirmed');
-          void doPlatePurchase(plate, state);
+          void doPlateLookup(plate, state);
         }}
       />
 

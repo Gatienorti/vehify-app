@@ -64,8 +64,8 @@ History        [ SCAN ]        Account
 | Tier | Question answered | Customer price | Notes |
 |------|-------------------|----------------|-------|
 | Free VIN lookup | Is this the correct vehicle? | **FREE** | NHTSA decode + recalls |
-| Plate lookup | Which vehicle is this? | **$0.25** | Plate→VIN; **credited toward Buyer's Analysis** |
-| Buyer's Analysis | Should I buy this vehicle? | **$1.99** (**$1.74** after plate credit) | Model Score + Deal verdict, market value (single estimate — no MSRP), suggested offer, negotiation, recalls |
+| Plate lookup | Which vehicle is this? | **FREE** | Plate→VIN (funnel opener — cache-first; provider cost absorbed) |
+| Buyer's Analysis | Should I buy this vehicle? | **$1.99** | Model Score + Deal verdict, market value (single estimate — no MSRP), suggested offer, negotiation, recalls |
 | Complete Vehicle History | What happened to this VIN? | **+$3 upgrade → $4.99** | Everything above **+** per-VIN Buy Score, accident/title/theft/odometer/owners/service |
 
 Complete History is an **upgrade-only** path — the user buys Buyer's Analysis first, then adds full history for +$3. Optimize for a one-time consumer, not a dealer power user. No credits, no subscription at launch. `ReportTier = 'basic' | 'buyers_analysis' | 'complete_history'`.
@@ -97,7 +97,7 @@ Google **ML Kit text recognition** (`react-native-mlkit-ocr`) runs **on-device**
 **One unified scan (no plate/VIN mode toggle).** `ScanScreen` runs all detectors at once; priority **barcode → VIN text → plate**:
 - **Barcode/QR → VIN (free).** Plates are never barcoded, so any barcode is a VIN. `barcodeScannerSettings` watches QR (Tesla door jamb), DataMatrix, PDF417, Code39/128 on the live preview — no photo needed. `extractVinFromBarcode` digs the VIN out of any payload shape. Opens editable **`VinConfirmSheet`**.
 - **VIN text → VIN (free).** Door-jamb printed VIN via the locate pass (step 2 above).
-- **Plate loop → Plate ($0.25).** Opens **`ScanConfirmSheet`** — editable plate + state picker + explicit `Search plate · $0.25` confirm. Manual plate entry (`ManualEntrySheet`) routes through the same sheet.
+- **Plate loop → Plate (FREE).** Opens **`ScanConfirmSheet`** — editable plate + state picker + explicit `Search plate — free` confirm. Manual plate entry (`ManualEntrySheet`) routes through the same sheet.
 - Camera UX: preview live on tab arrival (scan loop only after "Start scanning"), pinch-to-zoom (gesture wraps the whole screen — wrapping only `CameraView` gets buried under the UI), torch toggle, `autofocus="off"` (expo-camera semantics are inverted: "on" = focus-once-then-LOCK, "off" = continuous — a scanner needs continuous).
 - Requires an **Expo dev client** (`npx expo run:ios --device`, not Expo Go); iOS simulators have no camera. ML Kit reads garbage off monitors/screens (moiré) — test against real plates or paper printouts.
 
@@ -105,7 +105,7 @@ Google **ML Kit text recognition** (`react-native-mlkit-ocr`) runs **on-device**
 1. **VIN lookup** (free): decode via NHTSA vPIC + recalls → basic summary.
 2. **Plate lookup**: cache-first; always show a **"Is this the correct vehicle?"** confirmation. From cache, "No, refresh" can be free; from live API, steer to "Enter VIN instead" (don't allow unlimited free refreshes).
 3. **Basic result** (free): YMM, trim, specs, open recalls, basic summary.
-4. **Buyer's Analysis upsell**: `Get Buyer's Analysis — $1.99` (or `$1.74` with plate credit). IAP → report with **Model Score** + **Deal verdict** (score + reason, never a bare number; green 80+, yellow 60–79, red <60), market value (single estimate), suggested offer, recommendation. The per-VIN **Buy Score** is reserved for the Complete-History upgrade.
+4. **Buyer's Analysis upsell**: `Get Buyer Report — $1.99`. IAP → report with **Model Score** + **Deal verdict** (score + reason, never a bare number; green 80+, yellow 60–79, red <60), market value (single estimate), suggested offer, recommendation. The per-VIN **Buy Score** is reserved for the Complete-History upgrade.
 5. **Complete History upgrade**: from the Buyer's Analysis report, `Add Complete History — +$5` → same report screen now also shows accident/title/theft/odometer/owners. One shared `PremiumUpsell` screen + one shared `PremiumReport` screen, both parameterized by `tier`.
 
 ### Local History (spec §14)
@@ -146,7 +146,7 @@ The app consumes these endpoints (spec §17). Keep request/response types in `sr
 
 ## Purchases (spec §16)
 
-- One-time **non-consumable** report products via RevenueCat (ids in `src/config/pricing.ts`): `buyers_analysis` ($1.99) and `complete_history_upgrade` (+$3). Complete History is an upgrade purchased *after* Buyer's Analysis.
+- One-time **non-consumable** report products via RevenueCat (ids in `src/config/pricing.ts`): `buyers_analysis` ($1.99) and `complete_history_upgrade` (+$3), plus consumable `report_refresh` ($2.00). Complete History is an upgrade purchased *after* Buyer's Analysis. Plate→VIN is free — no plate product, no credits.
 - Link a purchased report to the local device first; sync to backend if/when the user creates an account.
 - Always support **Restore Purchases**.
 

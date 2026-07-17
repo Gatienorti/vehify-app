@@ -15,7 +15,6 @@ import { useTheme } from '../theme';
 import PrimaryButton from './PrimaryButton';
 import LoadingOverlay from './LoadingOverlay';
 import { US_STATES, normalizePlate } from '../utils/plate';
-import { PRICING, formatUsd } from '../config/pricing';
 import { PLATE_LOOKUP_MESSAGES } from '../config/loadingMessages';
 
 interface Props {
@@ -124,11 +123,11 @@ export default function ScanConfirmSheet({
         ) : null}
 
         <Text style={[styles.costNote, { color: colors.textMuted, marginTop: spacing.md }]}>
-          Credited toward your Buyer&apos;s Analysis. VIN lookups are free and exact.
+          Plates can be transferred — you&apos;ll confirm the match before anything else.
         </Text>
 
         <PrimaryButton
-          label={`Search plate · ${formatUsd(PRICING.plateLookup)}`}
+          label="Search plate — free"
           loading={submitting}
           onPress={confirm}
           style={{ marginTop: spacing.md }}

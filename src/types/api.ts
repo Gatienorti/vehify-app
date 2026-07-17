@@ -31,39 +31,6 @@ export interface VinLookupResponse {
 
 export type BasicVehicleResponse = BasicReport;
 
-/** Paid $0.25 plate lookup (tier 2) — two-phase like report purchases. */
-export interface PlatePurchaseStartRequest {
-  plate: string;
-  state: string;
-  productId: string;
-}
-
-/**
- * Resolve-then-charge: start() looks up the plate FIRST and only returns a
- * chargeable `purchaseToken` on a hit. A miss returns `found: false` with no
- * token — the app must NOT trigger the store purchase (the user is never
- * charged for a plate we can't resolve) and steers to free VIN entry.
- * Mirrors PlatePurchaseController@start in ../vehify-web.
- */
-export type PlatePurchaseStartResponse =
-  | { found: true; purchaseToken: string }
-  | { found: false };
-
-export interface PlatePurchaseConfirmRequest {
-  purchaseToken: string;
-  platform: 'ios' | 'android';
-  appStoreTransactionId: string;
-}
-
-/**
- * Confirm reveals the VIN that start() already resolved (served from cache, no
- * extra provider call) — only ever called for a hit, so it always carries the
- * full PlateLookupResponse shape (hand it straight to VehicleMatch).
- * Mirrors PlatePurchaseController@confirm in ../vehify-web.
- */
-export type PlatePurchaseConfirmResponse =
-  { purchaseId: string; found: true } & PlateLookupResponse;
-
 export interface PurchaseStartRequest {
   vin: string;
   tier: PaidTier;

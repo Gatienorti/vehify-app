@@ -22,9 +22,9 @@ export type RootStackParamList = {
   BasicResult: { vin: string };
   /**
    * Upsell for a paid tier. `tier` selects Buyer's Analysis vs the Complete
-   * History upgrade; `hasPlateCredit` applies the $0.25 plate credit (Analysis).
+   * History upgrade.
    */
-  PremiumUpsell: { vin: string; tier: PaidTier; hasPlateCredit?: boolean };
+  PremiumUpsell: { vin: string; tier: PaidTier };
   PremiumReport: { vin: string; reportId?: string; tier: PaidTier };
 };
 

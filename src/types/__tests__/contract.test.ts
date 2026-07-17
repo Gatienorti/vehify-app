@@ -1,10 +1,4 @@
-import type {
-  PlatePurchaseConfirmResponse,
-  PlatePurchaseStartResponse,
-  PurchaseConfirmResponse,
-  ReportFetchResponse,
-  ReportResponse,
-} from '../api';
+import type { PurchaseConfirmResponse, ReportFetchResponse, ReportResponse } from '../api';
 import { isReportReady } from '../api';
 
 /**
@@ -167,43 +161,23 @@ const analysisOnlyReport: ReportResponse = {
   history: null,
 };
 
-// Resolve-then-charge: a hit is revealed by confirm; a miss is surfaced by
-// START (no token, never charged) — so the miss fixture is a start response.
-const plateHit: PlatePurchaseConfirmResponse = {
-  purchaseId: 'pp_1',
-  found: true,
-  source: 'cache',
-  lastVerifiedAt: '2026-05-02T00:00:00Z',
-  isLiveVerified: false,
-  vehicle: { vin: '4T1B11HK5KU212345' },
-};
-
-const plateStartHit: PlatePurchaseStartResponse = { found: true, purchaseToken: 'pp_1' };
-const plateStartMiss: PlatePurchaseStartResponse = { found: false };
-
-// Async generation (queued confirm): confirm answers 'generating' instantly,
-// GET /report/{id} serves the small poll payload until the build lands.
+// Queued generation: confirm answers instantly with status=generating and
+// the app polls GET /report/{id} until the payload flips to the full report.
 const confirmGenerating: PurchaseConfirmResponse = {
   reportId: '42',
-  tier: 'buyers_analysis',
+  tier: 'complete_history',
   status: 'generating',
 };
 
 const pollPending: ReportFetchResponse = {
   id: '42',
   reportId: '42',
-  tier: 'buyers_analysis',
+  tier: 'complete_history',
   vin: '4T1B11HK5KU212345',
   status: 'generating',
 };
 
 describe('backend contract fixtures (v2.1)', () => {
-  it('narrows the plate purchase union on `found`', () => {
-    expect(plateHit.found && plateHit.vehicle.vin).toBe('4T1B11HK5KU212345');
-    expect(plateStartHit.found && plateStartHit.purchaseToken).toBe('pp_1');
-    expect(plateStartMiss.found).toBe(false);
-  });
-
   it('narrows the report poll union on status', () => {
     expect(confirmGenerating.status).toBe('generating');
     expect(isReportReady(pollPending)).toBe(false);

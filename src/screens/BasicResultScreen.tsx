@@ -8,9 +8,8 @@ import PrimaryButton from '../components/PrimaryButton';
 import BuyAnalysisSheet from '../components/BuyAnalysisSheet';
 import { track } from '../config/analytics';
 import { useGetPurchasesQuery, useGetVehicleBasicQuery } from '../services/api';
-import { useAppSelector } from '../store/hooks';
 import { usePurchaseReport } from '../hooks/usePurchaseReport';
-import { PRICING, buyersAnalysisPrice, formatUsd } from '../config/pricing';
+import { PRICING, formatUsd } from '../config/pricing';
 import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'BasicResult'>;
@@ -30,14 +29,10 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
   const { vin } = route.params;
   const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin);
-  const historyEntry = useAppSelector((s) => s.history.entries.find((e) => e.vin === vin));
   // Ownership comes from the SERVER (device_id / user_id), never a local cache
   // that can claim a report the backend no longer has.
   const { data: purchases } = useGetPurchasesQuery();
   const purchase = purchases?.find((r) => r.vin === vin && r.reportId);
-  // The plate fee is credited toward Buyer's Analysis — earned when this
-  // vehicle was reached via a (paid) plate lookup (Report Tiers v2, tier 2).
-  const hasPlateCredit = historyEntry?.lookupType === 'plate';
   const [buySheetOpen, setBuySheetOpen] = useState(false);
   const { buy, buying } = usePurchaseReport();
 
@@ -49,7 +44,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   // success rebuilds the stack as Tabs → Report so back lands on Scan.
   const buyAnalysis = async (mileage: number | undefined, askingPrice: number | undefined, zip?: string) => {
     try {
-      const confirm = await buy(vin, 'buyers_analysis', { mileage, askingPrice, zip, hasPlateCredit });
+      const confirm = await buy(vin, 'buyers_analysis', { mileage, askingPrice, zip });
       navigation.reset({
         index: 1,
         routes: [
@@ -172,13 +167,8 @@ export default function BasicResultScreen({ navigation, route }: Props) {
             <Text style={[styles.hedge, { color: colors.textMuted }]}>
               *When available for your vehicle — data coverage varies by age and model.
             </Text>
-            {hasPlateCredit ? (
-              <Text style={[styles.creditNote, { color: colors.success }]}>
-                Your {formatUsd(PRICING.plateCredit)} plate credit is applied.
-              </Text>
-            ) : null}
             <PrimaryButton
-              label={`Get Buyer Report — ${formatUsd(buyersAnalysisPrice(hasPlateCredit))}`}
+              label={`Get Buyer Report — ${formatUsd(PRICING.buyersAnalysis)}`}
               onPress={() => {
                 track('premium_cta_viewed', { vin, tier: 'buyers_analysis' });
                 setBuySheetOpen(true);
@@ -191,7 +181,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
 
       <BuyAnalysisSheet
         visible={buySheetOpen}
-        price={buyersAnalysisPrice(hasPlateCredit)}
+        price={PRICING.buyersAnalysis}
         submitting={buying}
         // EV/plug-in: the sheet adds a ZIP field (charging density on the report).
         isElectric={/electric|plug-in/i.test(data.vehicle.fuelType ?? '')}
@@ -215,7 +205,6 @@ const styles = StyleSheet.create({
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   featureText: { fontSize: 14.5, lineHeight: 20, flex: 1 },
   hedge: { fontSize: 12, fontWeight: '500' },
-  creditNote: { fontSize: 13, fontWeight: '700' },
   errorTitle: { fontSize: 18, fontWeight: '700' },
   errorBody: { fontSize: 14, marginTop: 6 },
 });

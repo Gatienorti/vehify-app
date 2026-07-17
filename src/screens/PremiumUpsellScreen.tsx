@@ -17,7 +17,7 @@ import LoadingOverlay from '../components/LoadingOverlay';
 import { track } from '../config/analytics';
 import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { usePurchaseReport } from '../hooks/usePurchaseReport';
-import { PRICING, buyersAnalysisPrice, formatUsd } from '../config/pricing';
+import { PRICING, formatUsd } from '../config/pricing';
 import { parseOptionalPositiveInt } from '../utils/number';
 import type { StackScreenProps } from '../types/navigation';
 
@@ -59,7 +59,7 @@ const HISTORY_INCLUDED: IncludedLine[] = [
 /** Premium upsell + mock purchase (spec §12, §16; Report Tiers v2). Real IAP arrives later. */
 export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
-  const { vin, tier, hasPlateCredit = false } = route.params;
+  const { vin, tier } = route.params;
   const { buy, buying } = usePurchaseReport();
 
   const isAnalysis = tier === 'buyers_analysis';
@@ -69,8 +69,7 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const [askingPriceText, setAskingPriceText] = useState('');
   const title = isAnalysis ? 'Buyer Report' : 'Premium Report';
   const included = isAnalysis ? ANALYSIS_INCLUDED : HISTORY_INCLUDED;
-  // The Buyer Report honors the plate credit; the upgrade is a flat +$3.
-  const price = isAnalysis ? buyersAnalysisPrice(hasPlateCredit) : PRICING.completeUpgrade;
+  const price = isAnalysis ? PRICING.buyersAnalysis : PRICING.completeUpgrade;
   const buttonLabel = isAnalysis
     ? `Unlock ${title} — ${formatUsd(price)}`
     : `Add Premium Report — +${formatUsd(price)}`;
@@ -90,7 +89,6 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
       const confirm = await buy(vin, tier, {
         mileage: isAnalysis ? parseOptionalPositiveInt(mileageText) : undefined,
         askingPrice: isAnalysis ? parseOptionalPositiveInt(askingPriceText) : undefined,
-        hasPlateCredit,
       });
       if (isAnalysis) {
         // Rebuild the stack as Tabs → Report: once the report is owned, the
@@ -180,13 +178,6 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
-        {isAnalysis && hasPlateCredit ? (
-          <Text style={[styles.credit, { color: colors.success }]}>
-            {formatUsd(PRICING.plateCredit)} plate credit applied — you pay {formatUsd(price)} instead
-            of {formatUsd(PRICING.buyersAnalysis)}.
-          </Text>
-        ) : null}
-
         {/* Honest limits — don't promise data providers can't deliver (spec §12). */}
         <Text style={[styles.disclaimer, { color: colors.textMuted }]}>
           {isAnalysis
@@ -214,7 +205,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowText: { fontSize: 15, flex: 1 },
   hedge: { fontSize: 12, fontWeight: '500' },
-  credit: { fontSize: 14, fontWeight: '700' },
   disclaimer: { fontSize: 13, lineHeight: 19 },
   inputsTitle: { fontSize: 16, fontWeight: '700' },
   inputsHint: { fontSize: 13, lineHeight: 19 },
