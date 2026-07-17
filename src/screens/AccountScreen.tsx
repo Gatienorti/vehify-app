@@ -20,6 +20,7 @@ import { useLazyGetPurchasesQuery } from '../services/api';
 import AuthSheet, { type AuthMode } from '../components/AuthSheet';
 import DeleteAccountModal from '../components/DeleteAccountModal';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import CreditBadge from '../components/CreditBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -170,7 +171,10 @@ export default function AccountScreen(_props: Props) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: TAB_BAR_CLEARANCE, gap: spacing.lg }}>
-        <Text style={[styles.header, { color: colors.text }]}>Account</Text>
+        <View style={styles.headerRow}>
+          <Text style={[styles.header, { color: colors.text }]}>Account</Text>
+          <CreditBadge />
+        </View>
 
         {/* Optional account — only offered AFTER value is delivered (spec §15). */}
         {isAuthenticated && user ? (
@@ -291,6 +295,7 @@ export default function AccountScreen(_props: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { fontSize: 32, fontWeight: '800' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   card: { borderWidth: 1, borderRadius: 16, padding: 16 },
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   cardBody: { fontSize: 14, lineHeight: 20 },

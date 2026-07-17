@@ -51,22 +51,22 @@ export function RootNavigator() {
     >
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
       <Stack.Screen name="VehicleMatch" component={VehicleMatchScreen} options={{ title: 'Confirm vehicle' }} />
-      {/* Credit chip on the money screens only — shown once a user has ever
-          held credits (the component self-hides otherwise). */}
+      {/* Credit chip in the nav bar — transparent so iOS's own glass pill is
+          the single container (no double-pill). Self-hides unless ever held. */}
       <Stack.Screen
         name="BasicResult"
         component={BasicResultScreen}
-        options={{ title: 'Basic check', headerRight: () => <CreditBadge /> }}
+        options={{ title: 'Basic check', headerRight: () => <CreditBadge variant="header" /> }}
       />
       <Stack.Screen
         name="PremiumUpsell"
         component={PremiumUpsellScreen}
-        options={{ title: 'Full report', headerRight: () => <CreditBadge /> }}
+        options={{ title: 'Full report', headerRight: () => <CreditBadge variant="header" /> }}
       />
       <Stack.Screen
         name="PremiumReport"
         component={PremiumReportScreen}
-        options={{ title: 'Vehicle history', headerRight: () => <CreditBadge /> }}
+        options={{ title: 'Vehicle history', headerRight: () => <CreditBadge variant="header" /> }}
       />
     </Stack.Navigator>
   );

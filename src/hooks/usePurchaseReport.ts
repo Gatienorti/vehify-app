@@ -82,6 +82,10 @@ export function usePurchaseReport() {
   // If the STORE purchase succeeded but confirm failed (network blip), retry
   // must reuse the same transaction — never buy twice.
   const paidTxRef = useRef<{ token: string; txId: string } | null>(null);
+  // Stable idempotency key per credit-redeem attempt: a retry with the same
+  // inputs reuses it, so the backend returns the same report instead of
+  // spending a second credit. Cleared once the redeem settles.
+  const redeemKeyRef = useRef<{ key: string; token: string } | null>(null);
 
   const buy = useCallback(
     async (vin: string, tier: PaidTier, opts: BuyOptions = {}): Promise<PurchaseConfirmResponse> => {
@@ -163,14 +167,24 @@ export function usePurchaseReport() {
       if (opts.mileage !== undefined) track('mileage_entered', { vin });
       if (opts.askingPrice !== undefined) track('asking_price_entered', { vin });
       setBuying(true);
+      // Stable across retries of the same attempt (same inputs → same key).
+      const attemptKey = `${vin}|${tier}|${opts.mileage ?? ''}|${opts.askingPrice ?? ''}|${opts.zip ?? ''}`;
+      const idempotencyKey =
+        redeemKeyRef.current?.key === attemptKey
+          ? redeemKeyRef.current.token
+          : `${attemptKey}|${Date.now()}`;
+      redeemKeyRef.current = { key: attemptKey, token: idempotencyKey };
       try {
         const confirm = await redeemReport({
           vin,
           tier,
+          idempotencyKey,
           ...(opts.mileage !== undefined ? { mileage: opts.mileage } : {}),
           ...(opts.askingPrice !== undefined ? { askingPrice: opts.askingPrice } : {}),
           ...(opts.zip !== undefined ? { zip: opts.zip } : {}),
         }).unwrap();
+        // Settled — the next purchase gets a fresh key.
+        redeemKeyRef.current = null;
         dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId }));
         track('credit_redeemed', { vin, tier: confirm.tier });
         return confirm;

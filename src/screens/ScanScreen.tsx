@@ -16,6 +16,7 @@ import ManualEntrySheet from '../components/ManualEntrySheet';
 import ScanConfirmSheet from '../components/ScanConfirmSheet';
 import VinConfirmSheet from '../components/VinConfirmSheet';
 import ScannerFrame from '../components/ScannerFrame';
+import CreditBadge from '../components/CreditBadge';
 import { track } from '../config/analytics';
 import { extractVinFromBarcode } from '../utils/vin';
 import { discardShot, readPlateOnce } from '../ml/plateProcessor';
@@ -27,6 +28,8 @@ type Props = TabScreenProps<'Scan'>;
 
 const VIEWPORT_GRADIENT = ['#11203E', '#080D18'] as const;
 const VIN_BARCODES = ['code39', 'code128', 'datamatrix', 'pdf417', 'qr'] as const;
+// Torch button hidden for now — flip to true to bring the flash toggle back.
+const SHOW_TORCH = false as boolean;
 
 export default function ScanScreen({ navigation, route }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -444,7 +447,16 @@ export default function ScanScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
-        {previewActive ? (
+        {/* Credit chip — top-right, self-hides unless the user has ever held
+            credits. */}
+        <View style={styles.topRight} pointerEvents="box-none">
+          <CreditBadge variant="overlay" />
+        </View>
+
+        {/* Torch — bottom-right, within thumb reach just above the scan
+            controls (out of the way of the top-right credit chip).
+            Hidden for now (SHOW_TORCH) — flip back on when wanted. */}
+        {SHOW_TORCH && previewActive ? (
           <Pressable
             onPress={() => { setTorch((t) => !t); track('scan_torch_toggled', { on: !torch }); }}
             style={[styles.torchBtn, torch && styles.torchBtnActive]}
@@ -559,10 +571,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  torchBtn: {
+  // Credit chip, top-right corner — aligned to roughly the same height as the
+  // title-row chip on History/Account.
+  topRight: {
     position: 'absolute',
-    top: 60,
+    top: 76,
     right: 20,
+    alignItems: 'flex-end',
+  },
+  torchBtn: {
+    // Bottom-right, just above the scan controls — thumb-reachable and clear
+    // of the top-right credit chip.
+    position: 'absolute',
+    right: 24,
+    bottom: 194,
     width: 44,
     height: 44,
     borderRadius: 22,

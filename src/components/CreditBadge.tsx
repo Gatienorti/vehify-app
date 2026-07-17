@@ -1,28 +1,49 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../theme';
 import { useCredits } from '../hooks/useCredits';
 
 /**
- * Header chip on the purchase screens showing the report-credit balance.
- * Rendered ONLY once the user has ever held credits — invisible to the vast
- * majority who only ever use in-app purchase (keeps "Credits: 0" from being
- * confusing noise). A zero balance shows in red as a gentle "top up" cue.
+ * Chip showing the report-credit balance. Rendered ONLY once the user has ever
+ * held credits — invisible to the vast majority who only ever use in-app
+ * purchase (keeps "Credits: 0" from being confusing noise). A zero balance
+ * shows in red as a gentle "top up" cue.
  *
  * It only DISPLAYS balance — no link or steer to buy elsewhere (credits are
- * purchased on the website; App Store rules forbid pointing users there
- * from inside the app).
+ * purchased on the website; App Store rules forbid pointing users there from
+ * inside the app).
+ *
+ * Variants:
+ * - `default` — gray pill for the light History/Account title rows.
+ * - `header`  — transparent (text only) for the native nav bar. iOS 26 draws
+ *   its own glass pill behind bar items, so ours must have NO background or it
+ *   double-stacks ("pill behind the pill").
+ * - `overlay` — dark translucent pill for the Scan camera view.
  */
-export default function CreditBadge() {
-  const { colors, radius } = useTheme();
+export default function CreditBadge({
+  variant = 'default',
+  style,
+}: {
+  variant?: 'default' | 'header' | 'overlay';
+  /** Extra layout style on the chip (e.g. alignSelf to right-align in a column). */
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
   const { balance, everHeld } = useCredits();
 
   if (!everHeld) return null;
 
+  const overlay = variant === 'overlay';
+  const header = variant === 'header';
+  const bg = overlay ? 'rgba(0,0,0,0.5)' : header ? 'transparent' : colors.surfaceAlt;
+  const labelColor = overlay ? 'rgba(255,255,255,0.75)' : colors.textMuted;
+  const zeroColor = overlay ? '#FF6369' : colors.danger;
+  const valueColor = balance === 0 ? zeroColor : overlay ? '#FFFFFF' : colors.text;
+
   return (
-    <View style={[styles.chip, { backgroundColor: colors.surfaceAlt, borderColor: colors.border, borderRadius: radius.md }]}>
-      <Text style={[styles.label, { color: colors.textMuted }]}>Credits: </Text>
-      <Text style={[styles.value, { color: balance === 0 ? colors.danger : colors.text }]}>{balance}</Text>
+    <View style={[styles.chip, { backgroundColor: bg }, header && styles.chipHeader, style]}>
+      <Text style={[styles.label, { color: labelColor }]}>Credits: </Text>
+      <Text style={[styles.value, { color: valueColor }]}>{balance}</Text>
     </View>
   );
 }
@@ -31,10 +52,12 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
+  // iOS supplies the glass pill + padding in the nav bar; ours is text only.
+  chipHeader: { paddingHorizontal: 0, paddingVertical: 0 },
   label: { fontSize: 13, fontWeight: '600' },
   value: { fontSize: 13, fontWeight: '800' },
 });

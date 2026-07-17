@@ -6,6 +6,7 @@ import { useTheme } from '../theme';
 import { useAppSelector } from '../store/hooks';
 import { useGetHistoryQuery } from '../services/api';
 import Badge from '../components/Badge';
+import CreditBadge from '../components/CreditBadge';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
 import type { TabScreenProps } from '../types/navigation';
@@ -66,7 +67,10 @@ export default function HistoryScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      <Text style={[styles.header, { color: colors.text, paddingHorizontal: spacing.lg }]}>History</Text>
+      <View style={[styles.headerRow, { paddingHorizontal: spacing.lg, paddingTop: spacing.lg }]}>
+        <Text style={[styles.header, { color: colors.text }]}>History</Text>
+        <CreditBadge />
+      </View>
       {gated ? (
         <View style={styles.empty}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -112,7 +116,8 @@ export default function HistoryScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { fontSize: 32, fontWeight: '800', paddingTop: 8, paddingBottom: 8 },
+  header: { fontSize: 32, fontWeight: '800' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
   emptyBody: { fontSize: 15, lineHeight: 22, textAlign: 'center' },

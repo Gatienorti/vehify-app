@@ -95,6 +95,12 @@ export interface RedeemReportRequest {
   askingPrice?: number;
   /** Optional buyer 5-digit ZIP — charging density on EV reports. */
   zip?: string;
+  /**
+   * Client-stable key for this purchase attempt. A retry after a dropped
+   * response reuses it so the backend returns the same report instead of
+   * spending a second credit.
+   */
+  idempotencyKey?: string;
 }
 
 export type ReportResponse = Report & {
