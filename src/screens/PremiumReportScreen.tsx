@@ -32,7 +32,8 @@ import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { useGetReportQuery, useRefreshReportMutation, useRetryReportMutation } from '../services/api';
 import { PurchaseCancelledError, purchaseThroughStore } from '../hooks/usePurchaseReport';
-import { PRICING, REPORT_REFRESH_PRODUCT_ID, formatUsd } from '../config/pricing';
+import { PRICING, REPORT_REFRESH_PRODUCT_ID, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
+import { useCredits } from '../hooks/useCredits';
 import { BUILDING_REPORT_MESSAGES, REPORT_OPEN_MESSAGES } from '../config/loadingMessages';
 import { isReportReady } from '../types/api';
 import {
@@ -292,6 +293,12 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
   );
   const [refreshReport, { isLoading: refreshing }] = useRefreshReportMutation();
   const [payingRefresh, setPayingRefresh] = useState(false);
+  // Upgrade is an UPGRADE credit cost (Buyer Report already owned). The actual
+  // spend happens on the upsell screen; here we only match the button label so
+  // credits-first is consistent across the flow.
+  const { balance: creditBalance } = useCredits();
+  const upgradeCreditCost = creditCostFor('complete_history', true);
+  const upgradeWithCredit = creditBalance >= upgradeCreditCost;
   // The $2 report refresh is a CONSUMABLE store purchase (RevenueCat) followed
   // by the backend re-queue. Cancel is silence; a store failure never fires
   // the refresh call.
@@ -798,7 +805,11 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               records.
             </Text>
             <PrimaryButton
-              label={`Add Premium Report — +${formatUsd(PRICING.completeUpgrade)}`}
+              label={
+                upgradeWithCredit
+                  ? `${creditLabel(upgradeCreditCost)} — Premium Report`
+                  : `Add Premium Report — +${formatUsd(PRICING.completeUpgrade)}`
+              }
               onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
               style={{ marginTop: 12 }}
             />

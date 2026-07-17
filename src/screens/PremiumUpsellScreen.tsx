@@ -17,7 +17,8 @@ import LoadingOverlay from '../components/LoadingOverlay';
 import { track } from '../config/analytics';
 import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
-import { PRICING, formatUsd } from '../config/pricing';
+import { useCredits } from '../hooks/useCredits';
+import { PRICING, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
 import { parseOptionalPositiveInt } from '../utils/number';
 import type { StackScreenProps } from '../types/navigation';
 
@@ -60,9 +61,15 @@ const HISTORY_INCLUDED: IncludedLine[] = [
 export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
   const { vin, tier } = route.params;
-  const { buy, buying } = usePurchaseReport();
+  const { buy, redeem, buying } = usePurchaseReport();
 
   const isAnalysis = tier === 'buyers_analysis';
+  // complete_history is only ever reached here as an UPGRADE (the report
+  // screen sends the user with the Buyer Report already owned) → discounted
+  // credit cost. Credits-first: spend them when the balance covers it.
+  const { balance } = useCredits();
+  const creditCost = creditCostFor(tier, tier === 'complete_history');
+  const useCredit = balance >= creditCost;
   // Buyer-entered context (optional, analysis only) — they're standing at the
   // car. Powers the deal verdict and the mileage-personalized valuation.
   const [mileageText, setMileageText] = useState('');
@@ -70,9 +77,11 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const title = isAnalysis ? 'Buyer Report' : 'Premium Report';
   const included = isAnalysis ? ANALYSIS_INCLUDED : HISTORY_INCLUDED;
   const price = isAnalysis ? PRICING.buyersAnalysis : PRICING.completeUpgrade;
-  const buttonLabel = isAnalysis
-    ? `Unlock ${title} — ${formatUsd(price)}`
-    : `Add Premium Report — +${formatUsd(price)}`;
+  const buttonLabel = useCredit
+    ? `${creditLabel(creditCost)} — ${isAnalysis ? title : 'Premium Report'}`
+    : isAnalysis
+      ? `Unlock ${title} — ${formatUsd(price)}`
+      : `Add Premium Report — +${formatUsd(price)}`;
 
   useEffect(() => {
     track('premium_cta_viewed', { vin, tier });
@@ -86,10 +95,11 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
 
   const doBuy = async () => {
     try {
-      const confirm = await buy(vin, tier, {
+      const opts = {
         mileage: isAnalysis ? parseOptionalPositiveInt(mileageText) : undefined,
         askingPrice: isAnalysis ? parseOptionalPositiveInt(askingPriceText) : undefined,
-      });
+      };
+      const confirm = useCredit ? await redeem(vin, tier, opts) : await buy(vin, tier, opts);
       if (isAnalysis) {
         // Rebuild the stack as Tabs → Report: once the report is owned, the
         // basic page below is redundant — back should land on Scan.
@@ -108,8 +118,10 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
     } catch (e) {
       if (e instanceof PurchaseCancelledError) return; // closed the sheet — silence
       Alert.alert(
-        'Purchase didn’t complete',
-        'You haven’t been charged. Check your connection and try again.',
+        useCredit ? 'Couldn’t use your credit' : 'Purchase didn’t complete',
+        useCredit
+          ? 'Your credit wasn’t spent. Check your connection and try again.'
+          : 'You haven’t been charged. Check your connection and try again.',
         [
           { text: 'Try again', onPress: () => void doBuy() },
           { text: 'Not now', style: 'cancel' },

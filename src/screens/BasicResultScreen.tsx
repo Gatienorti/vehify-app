@@ -11,8 +11,9 @@ import { VIN_DECODE_MESSAGES } from '../config/loadingMessages';
 import { track } from '../config/analytics';
 import { useGetPurchasesQuery, useGetVehicleBasicQuery, useLookupVinMutation } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
+import { useCredits } from '../hooks/useCredits';
 import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
-import { PRICING, formatUsd } from '../config/pricing';
+import { PRICING, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
 import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'BasicResult'>;
@@ -62,7 +63,13 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   const { data: purchases } = useGetPurchasesQuery();
   const purchase = purchases?.find((r) => r.vin === vin && r.reportId);
   const [buySheetOpen, setBuySheetOpen] = useState(false);
-  const { buy, buying } = usePurchaseReport();
+  const { buy, redeem, buying } = usePurchaseReport();
+  // Credits-first: if the buyer holds enough credits, spend them instead of an
+  // in-app purchase. Not enough (incl. zero) → the $ path, with no credit
+  // mention at all (App Store rules + keeps the funnel clean).
+  const { balance } = useCredits();
+  const buyerCreditCost = creditCostFor('buyers_analysis');
+  const useCredit = balance >= buyerCreditCost;
 
   // Fresh from scan + report already owned → straight to it; this page would
   // only offer "View your report" anyway. (Only on the `lookup` arrival —
@@ -82,7 +89,9 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   // success rebuilds the stack as Tabs → Report so back lands on Scan.
   const buyAnalysis = async (mileage: number | undefined, askingPrice: number | undefined, zip?: string) => {
     try {
-      const confirm = await buy(vin, 'buyers_analysis', { mileage, askingPrice, zip });
+      const confirm = useCredit
+        ? await redeem(vin, 'buyers_analysis', { mileage, askingPrice, zip })
+        : await buy(vin, 'buyers_analysis', { mileage, askingPrice, zip });
       navigation.reset({
         index: 1,
         routes: [
@@ -93,8 +102,10 @@ export default function BasicResultScreen({ navigation, route }: Props) {
     } catch (e) {
       if (e instanceof PurchaseCancelledError) return; // closed the sheet — silence
       Alert.alert(
-        'Purchase didn’t complete',
-        'You haven’t been charged twice — a paid purchase is resumed on retry.',
+        useCredit ? 'Couldn’t use your credit' : 'Purchase didn’t complete',
+        useCredit
+          ? 'Your credit wasn’t spent. Check your connection and try again.'
+          : 'You haven’t been charged twice — a paid purchase is resumed on retry.',
         [
           { text: 'Try again', onPress: () => void buyAnalysis(mileage, askingPrice, zip) },
           { text: 'Not now', style: 'cancel' },
@@ -221,7 +232,11 @@ export default function BasicResultScreen({ navigation, route }: Props) {
               *When available for your vehicle — data coverage varies by age and model.
             </Text>
             <PrimaryButton
-              label={`Get Buyer Report — ${formatUsd(PRICING.buyersAnalysis)}`}
+              label={
+                useCredit
+                  ? `${creditLabel(buyerCreditCost)} — Buyer Report`
+                  : `Get Buyer Report — ${formatUsd(PRICING.buyersAnalysis)}`
+              }
               onPress={() => {
                 track('premium_cta_viewed', { vin, tier: 'buyers_analysis' });
                 setBuySheetOpen(true);
@@ -235,6 +250,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
       <BuyAnalysisSheet
         visible={buySheetOpen}
         price={PRICING.buyersAnalysis}
+        creditCost={useCredit ? buyerCreditCost : undefined}
         submitting={buying}
         // EV/plug-in: the sheet adds a ZIP field (charging density on the report).
         isElectric={/electric|plug-in/i.test(data.vehicle.fuelType ?? '')}

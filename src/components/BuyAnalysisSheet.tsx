@@ -12,14 +12,19 @@ import {
 import { useTheme } from '../theme';
 import PrimaryButton from './PrimaryButton';
 import LoadingOverlay from './LoadingOverlay';
-import { formatUsd } from '../config/pricing';
+import { creditLabel, formatUsd } from '../config/pricing';
 import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { parseOptionalPositiveInt } from '../utils/number';
 
 interface Props {
   visible: boolean;
-  /** Final price (plate credit already applied by the caller). */
+  /** Dollar price for the in-app-purchase path. */
   price: number;
+  /**
+   * When set, the buyer has enough credits — the CTA reads "Use N credits"
+   * and NO price is shown (credits-first). Undefined → normal $ purchase.
+   */
+  creditCost?: number;
   submitting?: boolean;
   /** Electric/plug-in vehicle — shows the ZIP input (charging density). */
   isElectric?: boolean;
@@ -34,7 +39,7 @@ interface Props {
  * nearby-charging context), then purchase. Skipping is always one tap: the
  * inputs never block the sale.
  */
-export default function BuyAnalysisSheet({ visible, price, submitting = false, isElectric = false, onCancel, onBuy }: Props) {
+export default function BuyAnalysisSheet({ visible, price, creditCost, submitting = false, isElectric = false, onCancel, onBuy }: Props) {
   const { colors, spacing, radius } = useTheme();
   const [mileageText, setMileageText] = useState('');
   const [askingPriceText, setAskingPriceText] = useState('');
@@ -110,7 +115,11 @@ export default function BuyAnalysisSheet({ visible, price, submitting = false, i
           ) : null}
 
           <PrimaryButton
-            label={`Buy Buyer Report — ${formatUsd(price)}`}
+            label={
+              creditCost !== undefined
+                ? `${creditLabel(creditCost)} — Buyer Report`
+                : `Buy Buyer Report — ${formatUsd(price)}`
+            }
             loading={submitting}
             onPress={buy}
             style={{ marginTop: spacing.md }}

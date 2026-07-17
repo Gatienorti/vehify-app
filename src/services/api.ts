@@ -7,6 +7,7 @@ import type { HistoryEntry } from '../types/history';
 import type {
   AuthResponse,
   BasicVehicleResponse,
+  CreditsResponse,
   EmailLoginRequest,
   EmailRegisterRequest,
   ForgotPasswordRequest,
@@ -24,6 +25,7 @@ import type {
   PurchaseConfirmResponse,
   PurchaseStartRequest,
   PurchaseStartResponse,
+  RedeemReportRequest,
   ReportFetchResponse,
   ReportRequeuedResponse,
   SocialSignInRequest,
@@ -53,7 +55,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['VehicleBasic', 'Report', 'History', 'Purchases'],
+  tagTypes: ['VehicleBasic', 'Report', 'History', 'Purchases', 'Credits'],
   endpoints: (builder) => ({
     lookupVin: builder.mutation<VinLookupResponse, VinLookupRequest>({
       query: (body) => ({ url: '/lookup/vin', method: 'POST', body }),
@@ -84,6 +86,22 @@ export const api = createApi({
       // A purchase changes the report, the history feed's tier badge, and the
       // owned-reports list.
       invalidatesTags: ['Report', 'History', 'Purchases'],
+    }),
+
+    // Report credits balance (bought on the website, spent in-app). If the
+    // backend doesn't serve this yet it errors → the app reads balance as 0
+    // and behaves exactly as it does without credits (IAP only).
+    getCredits: builder.query<CreditsResponse, void>({
+      query: () => '/credits',
+      providesTags: ['Credits'],
+    }),
+
+    // Unlock a report by spending credits instead of an in-app purchase. The
+    // backend checks the balance + decrements + queues generation, returning
+    // the same shape as a paid confirm (so the caller's flow is identical).
+    redeemReport: builder.mutation<PurchaseConfirmResponse, RedeemReportRequest>({
+      query: (body) => ({ url: '/report/redeem', method: 'POST', body }),
+      invalidatesTags: ['Report', 'History', 'Purchases', 'Credits'],
     }),
 
     // While the backend's queued build runs, this returns the small
@@ -199,6 +217,8 @@ export const {
   useGetVehicleBasicQuery,
   useStartPurchaseMutation,
   useConfirmPurchaseMutation,
+  useGetCreditsQuery,
+  useRedeemReportMutation,
   useGetReportQuery,
   useRefreshReportMutation,
   useRetryReportMutation,

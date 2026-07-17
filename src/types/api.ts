@@ -69,6 +69,34 @@ export interface PurchaseConfirmResponse {
   status?: ReportGenerationStatus;
 }
 
+/**
+ * Report credits (bought on the website — no Apple/Google cut — and spent in
+ * the app). Balance is keyed by account/device on the backend. Anonymous
+ * devices that never bought credits get 0. GET /api/credits.
+ */
+export interface CreditsResponse {
+  balance: number;
+}
+
+/**
+ * Redeem a report with credits instead of an in-app purchase. The backend is
+ * authoritative on the credit COST (it knows what the buyer already owns — a
+ * complete-history upgrade costs less than a from-scratch history) and on the
+ * balance check; the app only sends intent. Returns the same shape as a paid
+ * confirm, so the caller's post-purchase flow is identical.
+ * POST /api/report/redeem.
+ */
+export interface RedeemReportRequest {
+  vin: string;
+  tier: PaidTier;
+  /** Optional buyer-entered odometer (miles) — powers the deal verdict/value. */
+  mileage?: number;
+  /** Optional seller's asking price (dollars). */
+  askingPrice?: number;
+  /** Optional buyer 5-digit ZIP — charging density on EV reports. */
+  zip?: string;
+}
+
 export type ReportResponse = Report & {
   id: string;
   status?: 'ready';

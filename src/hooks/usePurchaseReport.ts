@@ -3,7 +3,11 @@ import { Platform } from 'react-native';
 import Purchases, { PRODUCT_CATEGORY } from 'react-native-purchases';
 import { useAppDispatch } from '../store/hooks';
 import { markPurchased } from '../store/historySlice';
-import { useConfirmPurchaseMutation, useStartPurchaseMutation } from '../services/api';
+import {
+  useConfirmPurchaseMutation,
+  useRedeemReportMutation,
+  useStartPurchaseMutation,
+} from '../services/api';
 import { PRODUCT_IDS } from '../config/pricing';
 import { track } from '../config/analytics';
 import type { PaidTier } from '../types/vehicle';
@@ -69,6 +73,7 @@ export function usePurchaseReport() {
   const dispatch = useAppDispatch();
   const [startPurchase] = useStartPurchaseMutation();
   const [confirmPurchase] = useConfirmPurchaseMutation();
+  const [redeemReport] = useRedeemReportMutation();
   const [buying, setBuying] = useState(false);
   // Hold the token from a successful `start` so a later-phase failure retries
   // from the store/confirm step ONLY — never a second `start`. Keyed on the
@@ -145,5 +150,39 @@ export function usePurchaseReport() {
     [dispatch, startPurchase, confirmPurchase],
   );
 
-  return { buy, buying };
+  /**
+   * Unlock a report by spending credits instead of an in-app purchase. No
+   * store involved — the backend checks the balance, decrements, and queues
+   * generation, returning the same shape as a paid confirm. Only ever called
+   * when the caller has confirmed the balance covers the cost; the backend
+   * re-validates and rejects otherwise. Throws on failure (caller owns retry).
+   */
+  const redeem = useCallback(
+    async (vin: string, tier: PaidTier, opts: BuyOptions = {}): Promise<PurchaseConfirmResponse> => {
+      track('credit_redeem_started', { vin, tier });
+      if (opts.mileage !== undefined) track('mileage_entered', { vin });
+      if (opts.askingPrice !== undefined) track('asking_price_entered', { vin });
+      setBuying(true);
+      try {
+        const confirm = await redeemReport({
+          vin,
+          tier,
+          ...(opts.mileage !== undefined ? { mileage: opts.mileage } : {}),
+          ...(opts.askingPrice !== undefined ? { askingPrice: opts.askingPrice } : {}),
+          ...(opts.zip !== undefined ? { zip: opts.zip } : {}),
+        }).unwrap();
+        dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId }));
+        track('credit_redeemed', { vin, tier: confirm.tier });
+        return confirm;
+      } catch (e) {
+        track('credit_redeem_failed', { vin, tier });
+        throw e;
+      } finally {
+        setBuying(false);
+      }
+    },
+    [dispatch, redeemReport],
+  );
+
+  return { buy, redeem, buying };
 }
