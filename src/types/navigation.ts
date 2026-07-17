@@ -18,8 +18,14 @@ export type TabParamList = {
 /** Root stack wraps the tabs plus the lookup/report detail screens. */
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList>;
-  VehicleMatch: { result: PlateLookupResponse; plate: string; state: string };
-  BasicResult: { vin: string };
+  /**
+   * No `result` → the screen runs the plate lookup itself and shows its own
+   * loading state. The scan flow navigates here IMMEDIATELY on "Search plate —
+   * free" so the confirm sheet never collapses into a dead beat between screens.
+   */
+  VehicleMatch: { plate: string; state: string; result?: PlateLookupResponse };
+  /** `lookup` → decode the VIN on arrival (fresh from scan/manual entry). */
+  BasicResult: { vin: string; lookup?: boolean };
   /**
    * Upsell for a paid tier. `tier` selects Buyer's Analysis vs the Complete
    * History upgrade.

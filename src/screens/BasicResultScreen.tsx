@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CircleCheckBig } from 'lucide-react-native';
@@ -6,8 +6,11 @@ import { useTheme } from '../theme';
 import VehicleCard from '../components/VehicleCard';
 import PrimaryButton from '../components/PrimaryButton';
 import BuyAnalysisSheet from '../components/BuyAnalysisSheet';
+import LoadingOverlay from '../components/LoadingOverlay';
+import { VIN_DECODE_MESSAGES } from '../config/loadingMessages';
 import { track } from '../config/analytics';
-import { useGetPurchasesQuery, useGetVehicleBasicQuery } from '../services/api';
+import { useGetPurchasesQuery, useGetVehicleBasicQuery, useLookupVinMutation } from '../services/api';
+import { useRecordLookup } from '../hooks/useRecordLookup';
 import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
 import { PRICING, formatUsd } from '../config/pricing';
 import type { StackScreenProps } from '../types/navigation';
@@ -27,14 +30,49 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 /** Free basic result (spec §11). */
 export default function BasicResultScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
-  const { vin } = route.params;
-  const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin);
+  const { vin, lookup } = route.params;
+  // Fresh from scan/manual entry (`lookup`): decode the VIN HERE — the scan
+  // flow navigates immediately so the loading state lives on this screen
+  // instead of a sheet that collapses mid-transition. `decoded` gates the
+  // basic query: /vehicle/:vin/basic serves what the decode just cached.
+  const [lookupVin] = useLookupVinMutation();
+  const recordLookup = useRecordLookup();
+  const [decoded, setDecoded] = useState(!lookup);
+  const [decodeFailed, setDecodeFailed] = useState(false);
+  const runDecode = useCallback(async () => {
+    setDecodeFailed(false);
+    try {
+      const res = await lookupVin({ vin }).unwrap();
+      recordLookup(res.vehicle, { lookupType: 'vin' });
+      setDecoded(true);
+    } catch {
+      setDecodeFailed(true);
+    }
+  }, [lookupVin, recordLookup, vin]);
+  const decodeStartedRef = useRef(false);
+  useEffect(() => {
+    if (!lookup || decodeStartedRef.current) return;
+    decodeStartedRef.current = true;
+    void runDecode();
+  }, [lookup, runDecode]);
+
+  const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin, { skip: !decoded });
   // Ownership comes from the SERVER (device_id / user_id), never a local cache
   // that can claim a report the backend no longer has.
   const { data: purchases } = useGetPurchasesQuery();
   const purchase = purchases?.find((r) => r.vin === vin && r.reportId);
   const [buySheetOpen, setBuySheetOpen] = useState(false);
   const { buy, buying } = usePurchaseReport();
+
+  // Fresh from scan + report already owned → straight to it; this page would
+  // only offer "View your report" anyway. (Only on the `lookup` arrival —
+  // a deliberate visit to Basic from elsewhere stays put.)
+  const ownedReportId = lookup && purchase ? purchase.reportId : null;
+  const ownedTier = purchase?.tier;
+  useEffect(() => {
+    if (!decoded || !ownedReportId || !ownedTier) return;
+    navigation.replace('PremiumReport', { vin, reportId: ownedReportId, tier: ownedTier });
+  }, [decoded, ownedReportId, ownedTier, navigation, vin]);
 
   useEffect(() => {
     track('basic_report_viewed', { vin });
@@ -65,14 +103,28 @@ export default function BasicResultScreen({ navigation, route }: Props) {
     }
   };
 
-  if (isError) {
+  if (isError || decodeFailed) {
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
         <Text style={[styles.errorTitle, { color: colors.text }]}>Couldn&apos;t load this vehicle</Text>
         <Text style={[styles.errorBody, { color: colors.textMuted }]}>
           Check your connection and try again.
         </Text>
-        <PrimaryButton label="Try again" onPress={() => void refetch()} style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }} />
+        <PrimaryButton
+          label="Try again"
+          onPress={() => (decodeFailed ? void runDecode() : void refetch())}
+          style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (!decoded) {
+    // Decoding a freshly scanned/typed VIN — same overlay the confirm sheet
+    // used, so the transition reads as one continuous loading state.
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <LoadingOverlay visible title="Decoding this VIN…" messages={VIN_DECODE_MESSAGES} dim={false} />
       </SafeAreaView>
     );
   }
@@ -80,7 +132,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   if (isLoading || !data) {
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
