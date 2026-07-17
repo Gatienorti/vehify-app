@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import Purchases from 'react-native-purchases';
+import Purchases, { PRODUCT_CATEGORY } from 'react-native-purchases';
 import { useAppDispatch } from '../store/hooks';
 import { markPurchased } from '../store/historySlice';
 import { useConfirmPurchaseMutation, useStartPurchaseMutation } from '../services/api';
@@ -31,7 +31,9 @@ export class PurchaseCancelledError extends Error {
  * against real stores this is the actual payment.)
  */
 export async function purchaseThroughStore(productId: string): Promise<string> {
-  const [product] = await Purchases.getProducts([productId]);
+  // NON_SUBSCRIPTION is required: getProducts defaults to subscriptions only,
+  // silently returning [] for one-time products (all of ours).
+  const [product] = await Purchases.getProducts([productId], PRODUCT_CATEGORY.NON_SUBSCRIPTION);
   if (!product) {
     throw new Error(`RevenueCat has no product "${productId}" for this store`);
   }
