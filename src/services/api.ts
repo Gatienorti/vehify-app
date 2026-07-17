@@ -95,10 +95,15 @@ export const api = createApi({
     }),
 
     // Regenerate a stale report's content (offered via the "X days old"
-    // banner). Free while providers are mock/free. Queued: the response is
-    // the generating payload and the report polls back to ready.
-    refreshReport: builder.mutation<ReportRequeuedResponse, { id: string }>({
-      query: (arg) => ({ url: `/report/${arg.id}/refresh`, method: 'POST' }),
+    // banner). Paid via the report_refresh consumable — the store transaction
+    // id is verified server-side and consumed exactly once. Queued: the
+    // response is the generating payload and the report polls back to ready.
+    refreshReport: builder.mutation<ReportRequeuedResponse, { id: string; transactionId?: string }>({
+      query: ({ id, transactionId }) => ({
+        url: `/report/${id}/refresh`,
+        method: 'POST',
+        body: transactionId ? { transactionId } : {},
+      }),
       invalidatesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),
 

@@ -23,8 +23,8 @@ export type LookupSource = 'cache' | 'live';
 /**
  * What the user owns for a vehicle (Report Tiers MVP v2):
  *   basic            — Basic Report: free VIN/plate result (verify + identify)
- *   buyers_analysis  — Buyer Report: "should I buy this?" ($1.99 / $1.74)
- *   complete_history — Premium Report: buyers_analysis + full history (+$3 = $4.99)
+ *   buyers_analysis  — Buyer Report: "should I buy this?" ($1.99)
+ *   complete_history — Premium Report: buyers_analysis + full history (+$2.99 = $4.98)
  */
 export type ReportTier = 'basic' | 'buyers_analysis' | 'complete_history';
 

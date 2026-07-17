@@ -40,8 +40,9 @@ type Props = TabScreenProps<'Account'>;
 const PRIVACY_URL = 'https://vehify.app/privacy';
 // Placeholder support channel until a real contact form/page exists.
 const SUPPORT_EMAIL = 'gatien.orti@gmail.com';
-// Hidden until real IAP (RevenueCat) ships — spec §16 requires it at launch.
-const SHOW_RESTORE_PURCHASES = false as boolean;
+// Live with RevenueCat: restore is server-backed (GET /purchases by account
+// or device) — spec §16 requires it at launch.
+const SHOW_RESTORE_PURCHASES = true as boolean;
 
 function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress?: () => void }) {
   const { colors } = useTheme();

@@ -2,7 +2,7 @@
 
 > Scan-first used-car checker. Scan a plate or VIN → instant free basic summary → paid Buyer's Analysis → full history report.
 > Full product spec: `~/Downloads/vehicle_lookup_app_claude_code_full_spec.md` (source of truth for product decisions).
-> **Pricing/report tiers: `src/config/pricing.ts` (and backend `config/vehicle.php`) is the source of truth** — current model is $1.99 Buyer's Analysis / +$3 Complete-History upgrade. The `~/Downloads/Vehify_Report_Tiers_and_API_Cost_MVP_v2.pdf` gives the tier *rationale* but its older $2.99/$5/$7.99 numbers are superseded by code.
+> **Pricing/report tiers: `src/config/pricing.ts` (and backend `config/vehicle.php`) is the source of truth** — current model is $1.99 Buyer's Analysis / +$2.99 Complete-History upgrade. The `~/Downloads/Vehify_Report_Tiers_and_API_Cost_MVP_v2.pdf` gives the tier *rationale* but its older $2.99/$5/$7.99 numbers are superseded by code.
 
 ## Status
 
@@ -66,9 +66,9 @@ History        [ SCAN ]        Account
 | Free VIN lookup | Is this the correct vehicle? | **FREE** | NHTSA decode + recalls |
 | Plate lookup | Which vehicle is this? | **FREE** | Plate→VIN (funnel opener — cache-first; provider cost absorbed) |
 | Buyer's Analysis | Should I buy this vehicle? | **$1.99** | Model Score + Deal verdict, market value (single estimate — no MSRP), suggested offer, negotiation, recalls |
-| Complete Vehicle History | What happened to this VIN? | **+$3 upgrade → $4.99** | Everything above **+** per-VIN Buy Score, accident/title/theft/odometer/owners/service |
+| Complete Vehicle History | What happened to this VIN? | **+$2.99 upgrade → $4.98** | Everything above **+** per-VIN Buy Score, accident/title/theft/odometer/owners/service |
 
-Complete History is an **upgrade-only** path — the user buys Buyer's Analysis first, then adds full history for +$3. Optimize for a one-time consumer, not a dealer power user. No credits, no subscription at launch. `ReportTier = 'basic' | 'buyers_analysis' | 'complete_history'`.
+Complete History is an **upgrade-only** path — the user buys Buyer's Analysis first, then adds full history for +$2.99. Optimize for a one-time consumer, not a dealer power user. No credits, no subscription at launch. `ReportTier = 'basic' | 'buyers_analysis' | 'complete_history'`.
 
 **Prices live in code at `src/config/pricing.ts` — that file (and the backend `config/vehicle.php`) is the source of truth, not the older tiers PDF.** Model Score is always shown; the per-VIN **Buy Score** is Complete-History-only (the honesty split). No MSRP/depreciation — CarAPI valuation is a single number.
 
@@ -106,7 +106,7 @@ Google **ML Kit text recognition** (`react-native-mlkit-ocr`) runs **on-device**
 2. **Plate lookup**: cache-first; always show a **"Is this the correct vehicle?"** confirmation. From cache, "No, refresh" can be free; from live API, steer to "Enter VIN instead" (don't allow unlimited free refreshes).
 3. **Basic result** (free): YMM, trim, specs, open recalls, basic summary.
 4. **Buyer's Analysis upsell**: `Get Buyer Report — $1.99`. IAP → report with **Model Score** + **Deal verdict** (score + reason, never a bare number; green 80+, yellow 60–79, red <60), market value (single estimate), suggested offer, recommendation. The per-VIN **Buy Score** is reserved for the Complete-History upgrade.
-5. **Complete History upgrade**: from the Buyer's Analysis report, `Add Complete History — +$5` → same report screen now also shows accident/title/theft/odometer/owners. One shared `PremiumUpsell` screen + one shared `PremiumReport` screen, both parameterized by `tier`.
+5. **Complete History upgrade**: from the Buyer's Analysis report, `Add Premium Report — +$2.99` → same report screen now also shows accident/title/theft/odometer/owners. One shared `PremiumUpsell` screen + one shared `PremiumReport` screen, both parameterized by `tier`.
 
 ### Local History (spec §14)
 Store lookups on-device **before** any login (VIN, plate/state, YMM, date, basic snapshot, premium flag + report id). Prompt for an account only *after* value is delivered (2nd launch, after purchase, on "Protect reports") — never block app use.
@@ -146,7 +146,7 @@ The app consumes these endpoints (spec §17). Keep request/response types in `sr
 
 ## Purchases (spec §16)
 
-- One-time **non-consumable** report products via RevenueCat (ids in `src/config/pricing.ts`): `buyers_analysis` ($1.99) and `complete_history_upgrade` (+$3), plus consumable `report_refresh` ($2.00). Complete History is an upgrade purchased *after* Buyer's Analysis. Plate→VIN is free — no plate product, no credits.
+- One-time **non-consumable** report products via RevenueCat (ids in `src/config/pricing.ts`): `buyers_analysis` ($1.99) and `complete_history_upgrade` (+$2.99), plus consumable `report_refresh` ($2.99). Complete History is an upgrade purchased *after* Buyer's Analysis. Plate→VIN is free — no plate product, no credits.
 - Link a purchased report to the local device first; sync to backend if/when the user creates an account.
 - Always support **Restore Purchases**.
 

@@ -299,8 +299,9 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
     if (!data?.id || payingRefresh) return;
     setPayingRefresh(true);
     try {
-      await purchaseThroughStore(REPORT_REFRESH_PRODUCT_ID);
-      await refreshReport({ id: data.id }).unwrap();
+      const transactionId = await purchaseThroughStore(REPORT_REFRESH_PRODUCT_ID);
+      // The backend verifies + consumes this exact transaction (once).
+      await refreshReport({ id: data.id, transactionId }).unwrap();
     } catch (e) {
       if (!(e instanceof PurchaseCancelledError)) {
         Alert.alert('Update didn’t complete', 'Please try again.');
