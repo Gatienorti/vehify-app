@@ -32,7 +32,8 @@ interface Props {
 
 /**
  * Confirmation sheet for a plate lookup: the read is editable (both plate and
- * state) before the user commits to the $0.25 charge.
+ * state) before the FREE lookup fires (plate→VIN costs nothing — live
+ * cache-miss resolves are quota-limited server-side).
  */
 export default function ScanConfirmSheet({
   visible,

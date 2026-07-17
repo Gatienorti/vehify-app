@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AlertTriangle,
@@ -31,7 +31,8 @@ import ScoreBadge from '../components/ScoreBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { useGetReportQuery, useRefreshReportMutation, useRetryReportMutation } from '../services/api';
-import { PRICING, formatUsd } from '../config/pricing';
+import { PurchaseCancelledError, purchaseThroughStore } from '../hooks/usePurchaseReport';
+import { PRICING, REPORT_REFRESH_PRODUCT_ID, formatUsd } from '../config/pricing';
 import { BUILDING_REPORT_MESSAGES, REPORT_OPEN_MESSAGES } from '../config/loadingMessages';
 import { isReportReady } from '../types/api';
 import {
@@ -290,6 +291,24 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
     { pollingInterval },
   );
   const [refreshReport, { isLoading: refreshing }] = useRefreshReportMutation();
+  const [payingRefresh, setPayingRefresh] = useState(false);
+  // The $2 report refresh is a CONSUMABLE store purchase (RevenueCat) followed
+  // by the backend re-queue. Cancel is silence; a store failure never fires
+  // the refresh call.
+  const paidRefresh = async () => {
+    if (!data?.id || payingRefresh) return;
+    setPayingRefresh(true);
+    try {
+      await purchaseThroughStore(REPORT_REFRESH_PRODUCT_ID);
+      await refreshReport({ id: data.id }).unwrap();
+    } catch (e) {
+      if (!(e instanceof PurchaseCancelledError)) {
+        Alert.alert('Update didn’t complete', 'Please try again.');
+      }
+    } finally {
+      setPayingRefresh(false);
+    }
+  };
   const [retryReport, { isLoading: retrying }] = useRetryReportMutation();
   const [showAllMileage, setShowAllMileage] = useState(false);
   const [showClosedInvestigations, setShowClosedInvestigations] = useState(false);
@@ -426,13 +445,10 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               This report is {ageDays} days old. Recalls, investigations and market value may have
               changed since — pull the latest records.
             </Text>
-            {/* TODO RevenueCat: real IAP for REPORT_REFRESH_PRODUCT_ID. */}
             <PrimaryButton
               label={`Update report — ${formatUsd(PRICING.reportRefresh)}`}
-              loading={refreshing}
-              onPress={() => {
-                if (data.id) void refreshReport({ id: data.id });
-              }}
+              loading={refreshing || payingRefresh}
+              onPress={() => void paidRefresh()}
               style={{ marginTop: 10 }}
             />
           </View>

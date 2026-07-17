@@ -8,7 +8,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import BuyAnalysisSheet from '../components/BuyAnalysisSheet';
 import { track } from '../config/analytics';
 import { useGetPurchasesQuery, useGetVehicleBasicQuery } from '../services/api';
-import { usePurchaseReport } from '../hooks/usePurchaseReport';
+import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
 import { PRICING, formatUsd } from '../config/pricing';
 import type { StackScreenProps } from '../types/navigation';
 
@@ -52,10 +52,11 @@ export default function BasicResultScreen({ navigation, route }: Props) {
           { name: 'PremiumReport', params: { vin, reportId: confirm.reportId, tier: confirm.tier } },
         ],
       });
-    } catch {
+    } catch (e) {
+      if (e instanceof PurchaseCancelledError) return; // closed the sheet — silence
       Alert.alert(
         'Purchase didn’t complete',
-        'You haven’t been charged. Check your connection and try again.',
+        'You haven’t been charged twice — a paid purchase is resumed on retry.',
         [
           { text: 'Try again', onPress: () => void buyAnalysis(mileage, askingPrice, zip) },
           { text: 'Not now', style: 'cancel' },

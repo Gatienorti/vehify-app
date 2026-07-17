@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
+import { Platform } from 'react-native';
+import Purchases from 'react-native-purchases';
 import { useAppDispatch } from '../store/hooks';
 import { markPurchased } from '../store/historySlice';
 import { useConfirmPurchaseMutation, useStartPurchaseMutation } from '../services/api';
@@ -14,21 +16,53 @@ interface BuyOptions {
   zip?: string;
 }
 
+/** Thrown when the user closes the store's purchase sheet — not a failure. */
+export class PurchaseCancelledError extends Error {
+  constructor() {
+    super('purchase cancelled');
+    this.name = 'PurchaseCancelledError';
+  }
+}
+
 /**
- * The one purchase flow (mock IAP until RevenueCat): start → confirm →
- * record ownership locally. Throws on failure so the caller owns the retry
- * UX; navigation is the caller's job too (reset vs popTo differs by entry).
+ * Run the store purchase through RevenueCat and return the transaction id the
+ * backend records against its unique index. Cancel → PurchaseCancelledError.
+ * (Against the Test Store the sheet is simulated and nothing is charged;
+ * against real stores this is the actual payment.)
+ */
+export async function purchaseThroughStore(productId: string): Promise<string> {
+  const [product] = await Purchases.getProducts([productId]);
+  if (!product) {
+    throw new Error(`RevenueCat has no product "${productId}" for this store`);
+  }
+  try {
+    const result = await Purchases.purchaseStoreProduct(product);
+    return result.transaction?.transactionIdentifier ?? `rc-${result.customerInfo.originalAppUserId}-${productId}`;
+  } catch (e) {
+    if ((e as { userCancelled?: boolean }).userCancelled) throw new PurchaseCancelledError();
+    throw e;
+  }
+}
+
+/**
+ * The one purchase flow: backend `start` reserves the report (with the
+ * buyer's inputs) → RevenueCat runs the STORE purchase → backend `confirm`
+ * records the real transaction and queues generation. Throws on failure so
+ * the caller owns the retry UX (cancellations throw PurchaseCancelledError —
+ * treat those as silence, not errors); navigation is the caller's job too.
  */
 export function usePurchaseReport() {
   const dispatch = useAppDispatch();
   const [startPurchase] = useStartPurchaseMutation();
   const [confirmPurchase] = useConfirmPurchaseMutation();
   const [buying, setBuying] = useState(false);
-  // Hold the token from a successful `start` so a confirm-phase failure retries
-  // confirm ONLY — never a second `start`, which under real IAP would be a
-  // second charge. Mirrors ScanScreen's plateTokenRef. Keyed on the exact
-  // purchase inputs; a changed mileage/price re-runs start intentionally.
+  // Hold the token from a successful `start` so a later-phase failure retries
+  // from the store/confirm step ONLY — never a second `start`. Keyed on the
+  // exact purchase inputs; changed mileage/price re-runs start intentionally.
   const startTokenRef = useRef<{ key: string; token: string } | null>(null);
+  // If the STORE purchase succeeded but confirm failed (network blip), retry
+  // must reuse the same transaction — never buy twice.
+  const paidTxRef = useRef<{ token: string; txId: string } | null>(null);
 
   const buy = useCallback(
     async (vin: string, tier: PaidTier, opts: BuyOptions = {}): Promise<PurchaseConfirmResponse> => {
@@ -38,7 +72,7 @@ export function usePurchaseReport() {
       setBuying(true);
       const attemptKey = `${vin}|${tier}|${opts.mileage ?? ''}|${opts.askingPrice ?? ''}|${opts.zip ?? ''}`;
       try {
-        // TODO: replace with RevenueCat purchase flow; this mocks the store round-trip.
+        // 1. Reserve server-side (carries mileage/asking/zip into generation).
         let purchaseToken = startTokenRef.current?.key === attemptKey ? startTokenRef.current.token : null;
         if (!purchaseToken) {
           const start = await startPurchase({
@@ -50,27 +84,35 @@ export function usePurchaseReport() {
             ...(opts.zip !== undefined ? { zip: opts.zip } : {}),
           }).unwrap();
           purchaseToken = start.purchaseToken;
-          // Charged (or will be) — remember the token before the confirm hop so
-          // a confirm failure can resume without re-charging.
           startTokenRef.current = { key: attemptKey, token: purchaseToken };
         }
+
+        // 2. The real store purchase (RevenueCat) — reused on confirm-retry.
+        let txId = paidTxRef.current?.token === purchaseToken ? paidTxRef.current.txId : null;
+        if (!txId) {
+          txId = await purchaseThroughStore(PRODUCT_IDS[tier]);
+          paidTxRef.current = { token: purchaseToken, txId };
+        }
+
+        // 3. Record the payment + queue generation.
         const confirm = await confirmPurchase({
           purchaseToken,
-          // Unique per purchase — the backend has a unique index on
-          // transaction ids (double-mint guard).
-          appStoreTransactionId: `mock-txn-${purchaseToken}`,
-          platform: 'ios',
+          appStoreTransactionId: txId,
+          platform: Platform.OS === 'android' ? 'android' : 'ios',
           tier,
         }).unwrap();
         // Fully settled — clear so the next purchase starts fresh.
         startTokenRef.current = null;
+        paidTxRef.current = null;
         // Optimistic paint of the local history badge; the server (via the
         // Purchases/History tag invalidation) is the real ownership record.
         dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId }));
         track('premium_purchase_completed', { vin, tier: confirm.tier });
         return confirm;
       } catch (e) {
-        track('premium_purchase_failed', { vin, tier });
+        if (!(e instanceof PurchaseCancelledError)) {
+          track('premium_purchase_failed', { vin, tier });
+        }
         throw e;
       } finally {
         setBuying(false);

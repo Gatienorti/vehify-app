@@ -16,7 +16,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { track } from '../config/analytics';
 import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
-import { usePurchaseReport } from '../hooks/usePurchaseReport';
+import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
 import { PRICING, formatUsd } from '../config/pricing';
 import { parseOptionalPositiveInt } from '../utils/number';
 import type { StackScreenProps } from '../types/navigation';
@@ -105,7 +105,8 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
         // upgraded params — no stale analysis-only screen left behind.
         navigation.popTo('PremiumReport', { vin, reportId: confirm.reportId, tier: confirm.tier });
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof PurchaseCancelledError) return; // closed the sheet — silence
       Alert.alert(
         'Purchase didn’t complete',
         'You haven’t been charged. Check your connection and try again.',

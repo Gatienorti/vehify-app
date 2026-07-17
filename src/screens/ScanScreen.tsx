@@ -22,6 +22,7 @@ import {
   useLookupPlateMutation,
   useLookupVinMutation,
 } from '../services/api';
+import { useAppSelector } from '../store/hooks';
 import { useRecordLookup } from '../hooks/useRecordLookup';
 import { extractVinFromBarcode } from '../utils/vin';
 import { discardShot, readPlateOnce } from '../ml/plateProcessor';
@@ -103,6 +104,9 @@ export default function ScanScreen({ navigation, route }: Props) {
 
   const [lookupVin, vinState] = useLookupVinMutation();
   const [lookupPlate, plateState] = useLookupPlateMutation();
+  // Auth state drives the quota-hit copy: anonymous users get the sign-in
+  // upsell (3× the plate-lookup allowance), signed-in users get the timer.
+  const signedIn = useAppSelector((s) => !!s.auth.token);
   const recordLookup = useRecordLookup();
   // Owned reports, readable inside stable callbacks without re-creating them.
   // Owned reports from the SERVER (source of truth) — never the local cache,
@@ -336,10 +340,41 @@ export default function ScanScreen({ navigation, route }: Props) {
           );
           return;
         }
+        if (status === 429) {
+          // Personal quota on LIVE resolves (cache hits never hit this).
+          // Anonymous → the sign-in upsell (3× the allowance); signed-in →
+          // it frees up within the hour (and any report purchase resets it).
+          // VIN entry stays free and unlimited either way.
+          setSheetOpen(false);
+          setPendingPlate(null);
+          unfreezeShot();
+          track('plate_lookup_quota_hit', { signedIn });
+          if (signedIn) {
+            Alert.alert(
+              'Plate lookup limit reached',
+              'You’ve used your plate lookups for now — they free up within the hour. VIN lookups are free and unlimited, and any report purchase refills your plate lookups instantly.',
+              [
+                { text: 'Enter VIN — free', onPress: () => setSheetOpen(true) },
+                { text: 'OK', style: 'cancel' },
+              ],
+            );
+          } else {
+            Alert.alert(
+              'Free limit reached',
+              'You’ve used the free plate lookups for now. Sign in to get 3× more, or look the vehicle up by VIN — that’s free and unlimited.',
+              [
+                { text: 'Sign in for more', onPress: () => navigation.navigate('Account') },
+                { text: 'Enter VIN — free', onPress: () => setSheetOpen(true) },
+                { text: 'Not now', style: 'cancel' },
+              ],
+            );
+          }
+          return;
+        }
         setLookupError("The lookup didn't go through. Check your connection and try again.");
       }
     },
-    [lookupPlate, navigation, unfreezeShot],
+    [lookupPlate, navigation, signedIn, unfreezeShot],
   );
 
   // Manual plate entry → same editable confirm sheet
