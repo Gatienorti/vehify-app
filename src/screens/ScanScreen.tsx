@@ -44,6 +44,10 @@ export default function ScanScreen({ navigation, route }: Props) {
   const [pendingVin, setPendingVin] = useState<string | null>(null);
   // Network/server failure of the lookup itself, surfaced inside the sheet.
   const [lookupError, setLookupError] = useState<string | null>(null);
+  // True from lookup-success until this screen blurs: the confirm sheet's
+  // loading overlay stays up THROUGH the push transition (closing it first
+  // flashes the bare scanner for a beat before the next screen lands).
+  const [navigating, setNavigating] = useState(false);
 
   const readingRef = useRef(false);
   const camRef = useRef<CameraView>(null);
@@ -137,10 +141,12 @@ export default function ScanScreen({ navigation, route }: Props) {
         setScanning(false);
         setPendingPlate(null);
         setPendingVin(null);
+        setNavigating(false);
+        unfreezeShot();
         setTorch(false);
         setZoom(0);
       };
-    }, [setScanning, setPendingPlate, setPendingVin, setTorch, setZoom]),
+    }, [setScanning, setPendingPlate, setPendingVin, setTorch, setZoom, unfreezeShot]),
   );
 
   // A rejected plate match steers here with the manual VIN sheet open
@@ -288,9 +294,10 @@ export default function ScanScreen({ navigation, route }: Props) {
       try {
         const res = await lookupVin({ vin }).unwrap();
         recordLookup(res.vehicle, { lookupType: 'vin' });
+        // Sheet + loading overlay stay up through the push (blur cleanup
+        // clears them once the next screen has landed).
+        setNavigating(true);
         setSheetOpen(false);
-        setPendingVin(null);
-        unfreezeShot();
         // Already-owned report → straight to it; the basic page would only
         // offer "View your report" anyway.
         const owned = purchasesRef.current?.find((p) => p.vin === res.vehicle.vin && p.reportId);
@@ -307,7 +314,7 @@ export default function ScanScreen({ navigation, route }: Props) {
         setLookupError("Couldn't reach the server. Check your connection and try again.");
       }
     },
-    [lookupVin, recordLookup, navigation, unfreezeShot],
+    [lookupVin, recordLookup, navigation],
   );
 
   // FREE plate→VIN lookup (funnel opener — the paid reports carry the
@@ -318,9 +325,8 @@ export default function ScanScreen({ navigation, route }: Props) {
       setLookupError(null);
       try {
         const res = await lookupPlate({ plate, state }).unwrap();
+        setNavigating(true);
         setSheetOpen(false);
-        setPendingPlate(null);
-        unfreezeShot();
         track(res.source === 'cache' ? 'plate_cache_hit' : 'plate_cache_miss', { state });
         navigation.navigate('VehicleMatch', { result: res, plate, state });
       } catch (e) {
@@ -577,14 +583,14 @@ export default function ScanScreen({ navigation, route }: Props) {
           setSheetOpen(false);
         }}
         onSubmitPlate={onSubmitPlate}
-        submitting={submitting}
+        submitting={submitting || navigating}
       />
 
       <ScanConfirmSheet
         visible={pendingPlate !== null && pendingVin === null}
         initialPlate={pendingPlate?.plate ?? ''}
         initialState={pendingPlate?.state ?? null}
-        submitting={submitting}
+        submitting={submitting || navigating}
         serverError={lookupError}
         onCancel={resetPending}
         onConfirm={(plate, state) => {
@@ -596,7 +602,7 @@ export default function ScanScreen({ navigation, route }: Props) {
       <VinConfirmSheet
         visible={pendingVin !== null}
         initialVin={pendingVin ?? ''}
-        submitting={submitting}
+        submitting={submitting || navigating}
         serverError={lookupError}
         onCancel={resetPending}
         onConfirm={(vin) => {
