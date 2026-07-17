@@ -18,6 +18,7 @@ import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
 import { useLazyGetPurchasesQuery } from '../services/api';
 import AuthSheet, { type AuthMode } from '../components/AuthSheet';
+import DeleteAccountModal from '../components/DeleteAccountModal';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
@@ -56,7 +57,7 @@ function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; 
 export default function AccountScreen(_props: Props) {
   const { colors, spacing, isDark } = useTheme();
   const dispatch = useAppDispatch();
-  const { user, isAuthenticated, signIn, signOut, busy } = useAccount();
+  const { user, isAuthenticated, signIn, signOut, deleteAccount, busy } = useAccount();
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const openAuth = (mode: AuthMode) => {
@@ -119,6 +120,22 @@ export default function AccountScreen(_props: Props) {
   };
   const [fetchPurchases, { isFetching: restoring }] = useLazyGetPurchasesQuery();
 
+  // Permanent deletion (App Store 5.1.1(v) / Play policy). Irreversible, so
+  // the modal makes it deliberate: the user must type DELETE to arm the
+  // button. Lookups + reports made on THIS phone stay available to it
+  // (device-owned); only the account and its identity link are erased.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const runDeleteAccount = async () => {
+    try {
+      await deleteAccount();
+      setDeleteOpen(false);
+      Alert.alert('Account deleted', 'Your account is gone and this phone is signed out. Your lookups and reports made on this phone are still here — you can keep using Vehify without an account.');
+    } catch {
+      setDeleteOpen(false);
+      Alert.alert('Couldn’t delete your account', 'We couldn’t reach the server just now — your account is unchanged. Please try again.');
+    }
+  };
+
   // Server-backed restore: pull the owner's paid reports (by account or device)
   // and re-seed the local entitlement cache, so owned-report shortcuts work
   // after a reinstall or on a new device. History itself is server-authoritative
@@ -168,6 +185,9 @@ export default function AccountScreen(_props: Props) {
               onPress={() => void signOut()}
               style={{ marginTop: spacing.md }}
             />
+            <Pressable onPress={() => setDeleteOpen(true)} disabled={busy} hitSlop={8} style={styles.deleteLinkWrap}>
+              <Text style={[styles.deleteLink, { color: colors.danger }]}>Delete account</Text>
+            </Pressable>
           </View>
         ) : (
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -255,6 +275,12 @@ export default function AccountScreen(_props: Props) {
       </ScrollView>
 
       <AuthSheet visible={authOpen} initialMode={authMode} onClose={() => setAuthOpen(false)} />
+      <DeleteAccountModal
+        visible={deleteOpen}
+        busy={busy}
+        onConfirm={() => void runDeleteAccount()}
+        onClose={() => setDeleteOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -279,6 +305,8 @@ const styles = StyleSheet.create({
   appleLogo: { fontSize: 24, marginTop: -3 },
   appleLabel: { fontSize: 17, fontWeight: '600' },
   textLink: { fontSize: 15, fontWeight: '600' },
+  deleteLinkWrap: { alignSelf: 'center', paddingTop: 14, paddingBottom: 2 },
+  deleteLink: { fontSize: 14, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1 },
   rowLabel: { fontSize: 16 },
 });

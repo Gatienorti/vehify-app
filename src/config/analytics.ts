@@ -42,6 +42,7 @@ export type AnalyticsEvent =
   | 'account_created'
   | 'account_logged_in'
   | 'account_signed_out'
+  | 'account_deleted'
   | 'history_synced'
   | 'history_viewed'
   | 'theme_changed';

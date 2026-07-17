@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { clearAuth, setAuth } from '../store/authSlice';
 import {
+  useDeleteAccountMutation,
   useForgotPasswordMutation,
   useLoginEmailMutation,
   useLogoutMutation,
@@ -38,6 +39,7 @@ export function useAccount() {
   const [forgotPasswordReq] = useForgotPasswordMutation();
   const [resetPasswordReq] = useResetPasswordMutation();
   const [logout] = useLogoutMutation();
+  const [deleteAccountReq] = useDeleteAccountMutation();
   const [syncHistory] = useSyncHistoryMutation();
   const [busy, setBusy] = useState(false);
 
@@ -118,7 +120,21 @@ export function useAccount() {
     [run, logout, dispatch],
   );
 
-  return { user, isAuthenticated, signIn, register, login, forgotPassword, resetPassword, signOut, busy };
+  // Permanent deletion (store policy requirement). Unlike signOut, the server
+  // call must SUCCEED before the local session drops — silently clearing on a
+  // failed delete would leave the user believing an account still on the
+  // server is gone. Purchases made on this device stay usable (device-owned).
+  const deleteAccount = useCallback(
+    () =>
+      run(async () => {
+        await deleteAccountReq().unwrap();
+        dispatch(clearAuth());
+        track('account_deleted');
+      }),
+    [run, deleteAccountReq, dispatch],
+  );
+
+  return { user, isAuthenticated, signIn, register, login, forgotPassword, resetPassword, signOut, deleteAccount, busy };
 }
 
 function toSyncItem(e: HistoryEntry): HistorySyncItem {

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
@@ -25,10 +25,13 @@ export default function VehicleMatchScreen({ navigation, route }: Props) {
   const [refreshPlate, { isLoading }] = useRefreshPlateMutation();
   const recordLookup = useRecordLookup();
   const fromCache = result.source === 'cache';
+  // Screen-arrival time, captured once (render must stay pure — no Date.now()
+  // mid-render). Staleness doesn't need to tick while the screen is open.
+  const [nowMs] = useState(() => Date.now());
   const verifiedAtMs = result.lastVerifiedAt ? new Date(result.lastVerifiedAt).getTime() : NaN;
   const staleEnough = Number.isNaN(verifiedAtMs)
     ? true // unknown age — let the backend's gate decide
-    : Date.now() - verifiedAtMs >= REFRESH_AFTER_DAYS * 86_400_000;
+    : nowMs - verifiedAtMs >= REFRESH_AFTER_DAYS * 86_400_000;
   const canRefresh = fromCache && staleEnough;
   // Already-owned report for this VIN → confirming the match goes straight to
   // the report; the basic page would only offer "View your report" anyway.

@@ -53,8 +53,13 @@ const STALE_AFTER_DAYS = 30;
 /** Poll cadence while the backend's queued build runs (generation ≈ 6–18s). */
 const GENERATING_POLL_MS = 2500;
 
-/** Give up polling after this long — a stuck job must not spin the phone forever. */
-const GENERATING_CAP_MS = 90_000;
+/**
+ * Give up polling after this long — a stuck job must not spin the phone
+ * forever. Longer than the backend job's WORST-case retry timeline (3
+ * attempts + 15s/60s backoffs ≈ 150s), so a slow-but-succeeding build never
+ * shows the failure screen.
+ */
+const GENERATING_CAP_MS = 180_000;
 
 function reportAgeDays(generatedAt: string | null | undefined): number | null {
   if (!generatedAt) return null;
@@ -293,10 +298,12 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
   const generating =
     data !== undefined && !isReportReady(data) && data.status === 'generating' && !pollTimedOut;
 
-  // Start/stop the poll from what the server last said.
-  useEffect(() => {
-    setPollingInterval(generating ? GENERATING_POLL_MS : 0);
-  }, [generating]);
+  // Start/stop the poll from what the server last said — render-phase state
+  // adjustment (per React docs), not an effect: no cascading render warning.
+  const desiredInterval = generating ? GENERATING_POLL_MS : 0;
+  if (pollingInterval !== desiredInterval) {
+    setPollingInterval(desiredInterval);
+  }
 
   // Safety cap: if the build never lands, stop polling and offer a retry.
   useEffect(() => {

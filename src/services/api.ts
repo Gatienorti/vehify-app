@@ -156,6 +156,14 @@ export const api = createApi({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
     }),
 
+    // Permanent account deletion (App Store 5.1.1(v) / Play policy): erases
+    // the account + its synced history and revokes every session. Purchases
+    // made on THIS device remain available to it (device-owned).
+    deleteAccount: builder.mutation<LogoutResponse, void>({
+      query: () => ({ url: '/user', method: 'DELETE' }),
+      invalidatesTags: ['History', 'Purchases'],
+    }),
+
     // Claim anonymous device activity onto the account + copy local history up.
     syncHistory: builder.mutation<HistorySyncResponse, HistorySyncRequest>({
       query: (body) => ({ url: '/history/sync', method: 'POST', body }),
@@ -213,6 +221,7 @@ export const {
   useForgotPasswordMutation,
   useResetPasswordMutation,
   useLogoutMutation,
+  useDeleteAccountMutation,
   useSyncHistoryMutation,
   useGetHistoryQuery,
   useGetPurchasesQuery,
