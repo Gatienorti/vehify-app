@@ -32,8 +32,20 @@ export class PurchaseCancelledError extends Error {
  */
 export async function purchaseThroughStore(productId: string): Promise<string> {
   // NON_SUBSCRIPTION is required: getProducts defaults to subscriptions only,
-  // silently returning [] for one-time products (all of ours).
-  const [product] = await Purchases.getProducts([productId], PRODUCT_CATEGORY.NON_SUBSCRIPTION);
+  // silently returning [] for one-time products (all of ours). Some store
+  // backends (Test Store/web billing) have categorized one-time products
+  // inconsistently — if the filtered ask comes back empty, ask unfiltered
+  // before giving up.
+  let products = await Purchases.getProducts([productId], PRODUCT_CATEGORY.NON_SUBSCRIPTION);
+  if (!products.length) {
+    products = await Purchases.getProducts([productId]);
+  }
+  if (__DEV__) {
+    console.log(
+      `[purchase] getProducts("${productId}") → ${products.length ? products.map((p) => `${p.identifier} (${p.productCategory ?? '?'})`).join(', ') : 'EMPTY'}`,
+    );
+  }
+  const [product] = products;
   if (!product) {
     throw new Error(`RevenueCat has no product "${productId}" for this store`);
   }
@@ -113,6 +125,16 @@ export function usePurchaseReport() {
         return confirm;
       } catch (e) {
         if (!(e instanceof PurchaseCancelledError)) {
+          if (__DEV__) {
+            const err = e as { code?: string; message?: string; underlyingErrorMessage?: string; userInfo?: unknown };
+            console.log(
+              '[purchase] failed:',
+              err.code ?? '',
+              err.message ?? String(e),
+              err.underlyingErrorMessage ?? '',
+              err.userInfo ? JSON.stringify(err.userInfo) : '',
+            );
+          }
           track('premium_purchase_failed', { vin, tier });
         }
         throw e;
