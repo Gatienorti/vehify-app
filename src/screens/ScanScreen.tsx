@@ -291,12 +291,13 @@ export default function ScanScreen({ navigation, route }: Props) {
   const doVinLookup = useCallback(
     async (vin: string) => {
       setLookupError(null);
+      // Hold the overlay from the tap all the way through the push — RTK
+      // flips isLoading off a frame before this resumes, so setting the flag
+      // after the await leaves a one-frame overlay dismissal (visible flash).
+      setNavigating(true);
       try {
         const res = await lookupVin({ vin }).unwrap();
         recordLookup(res.vehicle, { lookupType: 'vin' });
-        // Sheet + loading overlay stay up through the push (blur cleanup
-        // clears them once the next screen has landed).
-        setNavigating(true);
         setSheetOpen(false);
         // Already-owned report → straight to it; the basic page would only
         // offer "View your report" anyway.
@@ -310,11 +311,19 @@ export default function ScanScreen({ navigation, route }: Props) {
         } else {
           navigation.navigate('BasicResult', { vin: res.vehicle.vin });
         }
+        // Dismantle sheet + overlay half a second AFTER the push starts — the
+        // new screen is on top by then, so nothing flashes underneath.
+        setTimeout(() => {
+          setPendingVin(null);
+          setNavigating(false);
+          unfreezeShot();
+        }, 500);
       } catch {
+        setNavigating(false);
         setLookupError("Couldn't reach the server. Check your connection and try again.");
       }
     },
-    [lookupVin, recordLookup, navigation],
+    [lookupVin, recordLookup, navigation, unfreezeShot],
   );
 
   // FREE plate→VIN lookup (funnel opener — the paid reports carry the
@@ -323,13 +332,19 @@ export default function ScanScreen({ navigation, route }: Props) {
   const doPlateLookup = useCallback(
     async (plate: string, state: string) => {
       setLookupError(null);
+      setNavigating(true);
       try {
         const res = await lookupPlate({ plate, state }).unwrap();
-        setNavigating(true);
         setSheetOpen(false);
         track(res.source === 'cache' ? 'plate_cache_hit' : 'plate_cache_miss', { state });
         navigation.navigate('VehicleMatch', { result: res, plate, state });
+        setTimeout(() => {
+          setPendingPlate(null);
+          setNavigating(false);
+          unfreezeShot();
+        }, 500);
       } catch (e) {
+        setNavigating(false);
         const status = (e as { status?: number }).status;
         if (status === 404) {
           // No match on record — not an error, steer to the exact free path.
