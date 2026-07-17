@@ -40,9 +40,11 @@ type Props = TabScreenProps<'Account'>;
 const PRIVACY_URL = 'https://vehify.app/privacy';
 // Placeholder support channel until a real contact form/page exists.
 const SUPPORT_EMAIL = 'gatien.orti@gmail.com';
-// Live with RevenueCat: restore is server-backed (GET /purchases by account
-// or device) — spec §16 requires it at launch.
-const SHOW_RESTORE_PURCHASES = true as boolean;
+// Restore is AUTOMATIC: ownership is server-backed (GET /purchases keyed by
+// device_id, and by account once signed in), so reports reappear on their own —
+// no manual button needed. Hidden. Flip to true only if a store ever needs an
+// explicit user-triggered restore (the handler + analytics stay wired for it).
+const SHOW_RESTORE_PURCHASES = false as boolean;
 
 function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress?: () => void }) {
   const { colors } = useTheme();
