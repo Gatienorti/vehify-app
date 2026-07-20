@@ -159,16 +159,21 @@ export const api = createApi({
     }),
 
     // Revoke the current device's token server-side (other devices stay in).
+    // Account-scoped reads must refetch as the anonymous device, but NOT via
+    // invalidatesTags here: that fires the refetches when the mutation
+    // fulfills, racing clearAuth() — they'd carry the just-revoked Bearer and
+    // 401. useAccount invalidates ['History','Purchases','Credits'] manually
+    // AFTER clearAuth().
     logout: builder.mutation<LogoutResponse, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
     }),
 
     // Permanent account deletion (App Store 5.1.1(v) / Play policy): erases
     // the account + its synced history and revokes every session. Purchases
-    // made on THIS device remain available to it (device-owned).
+    // made on THIS device remain available to it (device-owned). Same
+    // invalidation rule as logout: useAccount invalidates after clearAuth().
     deleteAccount: builder.mutation<LogoutResponse, void>({
       query: () => ({ url: '/user', method: 'DELETE' }),
-      invalidatesTags: ['History', 'Purchases'],
     }),
 
     // Claim anonymous device activity onto the account + copy local history up.

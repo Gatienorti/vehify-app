@@ -95,7 +95,7 @@ export default function ManualEntrySheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onClose} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onClose} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.avoider}
@@ -106,10 +106,10 @@ export default function ManualEntrySheet({
         <Text style={[styles.title, { color: colors.text }]}>Search manually</Text>
 
         <View style={[styles.tabs, { marginVertical: spacing.md }]}>
-          <Pressable onPress={() => { setMode('vin'); reset(); }} style={tabStyle(mode === 'vin')}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Enter VIN" onPress={() => { setMode('vin'); reset(); }} style={tabStyle(mode === 'vin')}>
             <Text style={[styles.tabText, { color: mode === 'vin' ? colors.onPrimary : colors.text }]}>Enter VIN</Text>
           </Pressable>
-          <Pressable onPress={() => { setMode('plate'); reset(); }} style={tabStyle(mode === 'plate')}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Enter plate" onPress={() => { setMode('plate'); reset(); }} style={tabStyle(mode === 'plate')}>
             <Text style={[styles.tabText, { color: mode === 'plate' ? colors.onPrimary : colors.text }]}>Enter Plate</Text>
           </Pressable>
         </View>
@@ -137,6 +137,8 @@ export default function ManualEntrySheet({
               style={[styles.input, { color: colors.text, borderColor: colors.border, borderRadius: radius.md }]}
             />
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Select state"
               onPress={() => setStatePickerOpen(true)}
               style={[styles.input, styles.stateSelect, { borderColor: colors.border, borderRadius: radius.md }]}
             >
@@ -166,6 +168,8 @@ export default function ManualEntrySheet({
             keyExtractor={(s) => s.code}
             renderItem={({ item }) => (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
                 onPress={() => { setState(item.code); setStatePickerOpen(false); reset(); }}
                 style={[styles.stateRow, { borderColor: colors.border }]}
               >

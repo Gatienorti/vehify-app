@@ -181,7 +181,9 @@ export default function ScanScreen({ navigation, route }: Props) {
             pageX: fpx, pageY: fpy, width: fw, height: fh,
             previewX: ppx, previewY: ppy, previewWidth: pw, previewHeight: ph,
           };
-          console.log('[ScanScreen] frame measured:', JSON.stringify(frameMeasureRef.current));
+          if (__DEV__) {
+            console.log('[ScanScreen] frame measured:', JSON.stringify(frameMeasureRef.current));
+          }
         });
       });
     }, 300);
@@ -241,7 +243,7 @@ export default function ScanScreen({ navigation, route }: Props) {
           clearReads();
         }
       } catch (e) {
-        console.error('[ScanScreen] read error:', e);
+        if (__DEV__) console.error('[ScanScreen] read error:', e);
       } finally {
         readingRef.current = false;
       }
@@ -447,8 +449,7 @@ export default function ScanScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
-        {/* Credit chip — top-right, self-hides unless the user has ever held
-            credits. */}
+        {/* Credit chip — top-right, always visible (0 shows in red). */}
         <View style={styles.topRight} pointerEvents="box-none">
           <CreditBadge variant="overlay" />
         </View>
@@ -458,6 +459,8 @@ export default function ScanScreen({ navigation, route }: Props) {
             Hidden for now (SHOW_TORCH) — flip back on when wanted. */}
         {SHOW_TORCH && previewActive ? (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={torch ? 'Turn off flashlight' : 'Turn on flashlight'}
             onPress={() => { setTorch((t) => !t); track('scan_torch_toggled', { on: !torch }); }}
             style={[styles.torchBtn, torch && styles.torchBtnActive]}
             hitSlop={10}
@@ -468,13 +471,13 @@ export default function ScanScreen({ navigation, route }: Props) {
 
         <View style={styles.actions}>
           {scanning ? (
-            <Pressable onPress={stopScanning} style={styles.stopBtn} hitSlop={8}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Stop scanning" onPress={stopScanning} style={styles.stopBtn} hitSlop={8}>
               <Text style={styles.stopBtnText}>Stop scanning</Text>
             </Pressable>
           ) : (
             <PrimaryButton label="Start scanning" onPress={startScanning} />
           )}
-          <Pressable onPress={() => { track('manual_entry_opened'); setSheetOpen(true); }} style={styles.typeRow} hitSlop={8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Type plate or VIN manually" onPress={() => { track('manual_entry_opened'); setSheetOpen(true); }} style={styles.typeRow} hitSlop={8}>
             <Keyboard size={18} color="#AEB8CC" strokeWidth={2.25} />
             <Text style={styles.typeText}>Can&apos;t scan? Type instead</Text>
           </Pressable>

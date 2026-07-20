@@ -13,13 +13,6 @@ import { track } from '../config/analytics';
 import type { PaidTier } from '../types/vehicle';
 import type { PurchaseConfirmResponse } from '../types/api';
 
-interface BuyOptions {
-  mileage?: number;
-  askingPrice?: number;
-  /** Buyer's 5-digit ZIP — unlocks charging density on EV reports. */
-  zip?: string;
-}
-
 /** Thrown when the user closes the store's purchase sheet — not a failure. */
 export class PurchaseCancelledError extends Error {
   constructor() {
@@ -63,11 +56,13 @@ export async function purchaseThroughStore(productId: string): Promise<string> {
 }
 
 /**
- * The one purchase flow: backend `start` reserves the report (with the
- * buyer's inputs) → RevenueCat runs the STORE purchase → backend `confirm`
- * records the real transaction and queues generation. Throws on failure so
- * the caller owns the retry UX (cancellations throw PurchaseCancelledError —
- * treat those as silence, not errors); navigation is the caller's job too.
+ * The one purchase flow: backend `start` reserves the report → RevenueCat
+ * runs the STORE purchase → backend `confirm` records the real transaction
+ * and queues generation. No buyer inputs (the odometer/asking-price sheet was
+ * dropped with the valuation move — Premium's valuation mileage comes from
+ * the history records). Throws on failure so the caller owns the retry UX
+ * (cancellations throw PurchaseCancelledError — treat those as silence, not
+ * errors); navigation is the caller's job too.
  */
 export function usePurchaseReport() {
   const dispatch = useAppDispatch();
@@ -76,8 +71,7 @@ export function usePurchaseReport() {
   const [redeemReport] = useRedeemReportMutation();
   const [buying, setBuying] = useState(false);
   // Hold the token from a successful `start` so a later-phase failure retries
-  // from the store/confirm step ONLY — never a second `start`. Keyed on the
-  // exact purchase inputs; changed mileage/price re-runs start intentionally.
+  // from the store/confirm step ONLY — never a second `start`.
   const startTokenRef = useRef<{ key: string; token: string } | null>(null);
   // If the STORE purchase succeeded but confirm failed (network blip), retry
   // must reuse the same transaction — never buy twice.
@@ -88,23 +82,18 @@ export function usePurchaseReport() {
   const redeemKeyRef = useRef<{ key: string; token: string } | null>(null);
 
   const buy = useCallback(
-    async (vin: string, tier: PaidTier, opts: BuyOptions = {}): Promise<PurchaseConfirmResponse> => {
+    async (vin: string, tier: PaidTier): Promise<PurchaseConfirmResponse> => {
       track('premium_purchase_started', { vin, tier });
-      if (opts.mileage !== undefined) track('mileage_entered', { vin });
-      if (opts.askingPrice !== undefined) track('asking_price_entered', { vin });
       setBuying(true);
-      const attemptKey = `${vin}|${tier}|${opts.mileage ?? ''}|${opts.askingPrice ?? ''}|${opts.zip ?? ''}`;
+      const attemptKey = `${vin}|${tier}`;
       try {
-        // 1. Reserve server-side (carries mileage/asking/zip into generation).
+        // 1. Reserve server-side.
         let purchaseToken = startTokenRef.current?.key === attemptKey ? startTokenRef.current.token : null;
         if (!purchaseToken) {
           const start = await startPurchase({
             vin,
             tier,
             productId: PRODUCT_IDS[tier],
-            ...(opts.mileage !== undefined ? { mileage: opts.mileage } : {}),
-            ...(opts.askingPrice !== undefined ? { askingPrice: opts.askingPrice } : {}),
-            ...(opts.zip !== undefined ? { zip: opts.zip } : {}),
           }).unwrap();
           purchaseToken = start.purchaseToken;
           startTokenRef.current = { key: attemptKey, token: purchaseToken };
@@ -162,13 +151,11 @@ export function usePurchaseReport() {
    * re-validates and rejects otherwise. Throws on failure (caller owns retry).
    */
   const redeem = useCallback(
-    async (vin: string, tier: PaidTier, opts: BuyOptions = {}): Promise<PurchaseConfirmResponse> => {
+    async (vin: string, tier: PaidTier): Promise<PurchaseConfirmResponse> => {
       track('credit_redeem_started', { vin, tier });
-      if (opts.mileage !== undefined) track('mileage_entered', { vin });
-      if (opts.askingPrice !== undefined) track('asking_price_entered', { vin });
       setBuying(true);
-      // Stable across retries of the same attempt (same inputs → same key).
-      const attemptKey = `${vin}|${tier}|${opts.mileage ?? ''}|${opts.askingPrice ?? ''}|${opts.zip ?? ''}`;
+      // Stable across retries of the same attempt.
+      const attemptKey = `${vin}|${tier}`;
       const idempotencyKey =
         redeemKeyRef.current?.key === attemptKey
           ? redeemKeyRef.current.token
@@ -179,9 +166,6 @@ export function usePurchaseReport() {
           vin,
           tier,
           idempotencyKey,
-          ...(opts.mileage !== undefined ? { mileage: opts.mileage } : {}),
-          ...(opts.askingPrice !== undefined ? { askingPrice: opts.askingPrice } : {}),
-          ...(opts.zip !== undefined ? { zip: opts.zip } : {}),
         }).unwrap();
         // Settled — the next purchase gets a fresh key.
         redeemKeyRef.current = null;

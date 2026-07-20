@@ -63,7 +63,7 @@ export default function VinConfirmSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       {/* Transparent backdrop (still tap-to-cancel): the scanner behind is
           showing the frozen detection shot — it must read clean, not dimmed. */}
-      <Pressable style={styles.backdrop} onPress={onCancel} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.backdrop} onPress={onCancel} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.avoider}
@@ -102,7 +102,7 @@ export default function VinConfirmSheet({
           onPress={confirm}
           style={{ marginTop: spacing.lg }}
         />
-        <Pressable onPress={onCancel} disabled={submitting} style={styles.cancelRow} hitSlop={8}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancel and keep scanning" onPress={onCancel} disabled={submitting} style={styles.cancelRow} hitSlop={8}>
           <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel &amp; keep scanning</Text>
         </Pressable>
       </View>

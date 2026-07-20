@@ -7,8 +7,11 @@ import type { PaidTier } from '../types/vehicle';
  * Tiers, cheapest → most valuable:
  *   Free VIN       — verify the vehicle (FREE)
  *   Plate          — identify the vehicle (Plate→VIN, FREE — funnel opener)
- *   Buyer Report   — should I buy this? ($1.99)
- *   Premium Report — what happened to this VIN? (+$2.99 upgrade → $4.98 total)
+ *   Buyer Report   — is this MODEL a good buy? ($1.99 — scores/recalls/safety;
+ *                    valuation-free by design, never draws paid value APIs)
+ *   Premium Report — is this CAR a good buy? (+$2.99 upgrade → $4.98 total:
+ *                    market value, suggested offer, negotiation + full
+ *                    history with the per-VIN Buy Score)
  *
  * All prices sit on the store-standard x.99 grid (Apple/Google price points).
  */
@@ -39,18 +42,18 @@ export const REPORT_REFRESH_PRODUCT_ID = 'report_refresh';
 /**
  * Credit cost per report, spent instead of an in-app purchase (credits are
  * bought on the website). The backend is the authority on the actual charge —
- * these values only drive the button label ("Use N credits"). A full history
- * from scratch is 2 credits; an upgrade (already own the Buyer Report) is 1,
- * mirroring the +$2.99 upgrade being cheaper than the $4.98 all-in.
+ * these values only drive the button label ("Use N credits"). The Premium
+ * Report is 3 credits TOTAL (the Buyer's 1 + 2 for the full history); on
+ * mobile complete_history is always reached as an upgrade, so the button
+ * charges the 2-credit delta — hence the value here is 2.
  */
 export const CREDIT_COST: Record<PaidTier, number> = {
   buyers_analysis: 1,
   complete_history: 2,
 };
 
-/** Credits to unlock `tier`; an upgrade (buyer already owned) is discounted. */
-export function creditCostFor(tier: PaidTier, isUpgrade = false): number {
-  if (tier === 'complete_history' && isUpgrade) return 1;
+/** Credits charged to add the full history — the 2-credit upgrade delta (Premium is 3 total). */
+export function creditCostFor(tier: PaidTier, _isUpgrade = false): number {
   return CREDIT_COST[tier];
 }
 

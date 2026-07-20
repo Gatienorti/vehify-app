@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { clearAuth, setAuth } from '../store/authSlice';
 import {
+  api,
   useDeleteAccountMutation,
   useForgotPasswordMutation,
   useLoginEmailMutation,
@@ -115,6 +116,10 @@ export function useAccount() {
           // Even if the network call fails, clear locally so the user is signed out.
         }
         dispatch(clearAuth());
+        // Refetch account-scoped reads AFTER the token is gone — invalidating
+        // from the mutation itself races clearAuth and 401s on the revoked
+        // Bearer, leaving History/Purchases stuck in error until refocus.
+        dispatch(api.util.invalidateTags(['History', 'Purchases', 'Credits']));
         track('account_signed_out');
       }),
     [run, logout, dispatch],
@@ -129,6 +134,9 @@ export function useAccount() {
       run(async () => {
         await deleteAccountReq().unwrap();
         dispatch(clearAuth());
+        // Same ordering rule as signOut: refetch as the anonymous device only
+        // after the (now-deleted) session is out of the store.
+        dispatch(api.util.invalidateTags(['History', 'Purchases', 'Credits']));
         track('account_deleted');
       }),
     [run, deleteAccountReq, dispatch],

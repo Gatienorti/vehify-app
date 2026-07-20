@@ -9,6 +9,7 @@ import {
   HelpCircle,
   Moon,
   RefreshCw,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../theme';
@@ -39,8 +40,8 @@ if (GOOGLE_SIGN_IN_READY) {
 type Props = TabScreenProps<'Account'>;
 
 const PRIVACY_URL = 'https://vehify.app/privacy';
-// Placeholder support channel until a real contact form/page exists.
-const SUPPORT_EMAIL = 'gatien.orti@gmail.com';
+const TERMS_URL = 'https://vehify.app/terms';
+const SUPPORT_EMAIL = 'support@vehify.app';
 // Restore is AUTOMATIC: ownership is server-backed (GET /purchases keyed by
 // device_id, and by account once signed in), so reports reappear on their own —
 // no manual button needed. Hidden. Flip to true only if a store ever needs an
@@ -50,7 +51,7 @@ const SHOW_RESTORE_PURCHASES = false as boolean;
 function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress?: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={[styles.row, { borderColor: colors.border }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={!onPress} style={[styles.row, { borderColor: colors.border }]}>
       <Icon size={21} color={colors.textMuted} strokeWidth={2.25} />
       <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
       <ChevronRight size={19} color={colors.textMuted} strokeWidth={2.25} style={{ marginLeft: 'auto' }} />
@@ -192,7 +193,7 @@ export default function AccountScreen(_props: Props) {
               onPress={() => void signOut()}
               style={{ marginTop: spacing.md }}
             />
-            <Pressable onPress={() => setDeleteOpen(true)} disabled={busy} hitSlop={8} style={styles.deleteLinkWrap}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Delete account" onPress={() => setDeleteOpen(true)} disabled={busy} hitSlop={8} style={styles.deleteLinkWrap}>
               <Text style={[styles.deleteLink, { color: colors.danger }]}>Delete account</Text>
             </Pressable>
           </View>
@@ -208,6 +209,8 @@ export default function AccountScreen(_props: Props) {
                 size pair with the Google button's G. iOS-only. */}
             {Platform.OS === 'ios' ? (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Apple"
                 onPress={() => void appleSignIn()}
                 disabled={busy}
                 style={({ pressed }) => [
@@ -231,11 +234,11 @@ export default function AccountScreen(_props: Props) {
               style={{ marginTop: Platform.OS === 'ios' ? spacing.sm : spacing.md }}
             />
             <View style={styles.textLinkRow}>
-              <Pressable onPress={() => openAuth('login')} disabled={busy} hitSlop={8}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Log in" onPress={() => openAuth('login')} disabled={busy} hitSlop={8}>
                 <Text style={[styles.textLink, { color: colors.primary }]}>Log in</Text>
               </Pressable>
               <Text style={[styles.textLink, { color: colors.textMuted, marginHorizontal: 8 }]}>·</Text>
-              <Pressable onPress={() => openAuth('register')} disabled={busy} hitSlop={8}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Register" onPress={() => openAuth('register')} disabled={busy} hitSlop={8}>
                 <Text style={[styles.textLink, { color: colors.primary }]}>Register</Text>
               </Pressable>
             </View>
@@ -273,7 +276,14 @@ export default function AccountScreen(_props: Props) {
           />
           <Row
             icon={FileText}
-            label="Legal & privacy"
+            label="Terms of Use"
+            onPress={() => {
+              Linking.openURL(TERMS_URL).catch(() => {});
+            }}
+          />
+          <Row
+            icon={ShieldCheck}
+            label="Privacy Policy"
             onPress={() => {
               Linking.openURL(PRIVACY_URL).catch(() => {});
             }}

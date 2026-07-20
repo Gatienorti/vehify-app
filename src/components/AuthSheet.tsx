@@ -118,7 +118,7 @@ export default function AuthSheet({ visible, initialMode = 'login', onClose, onS
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onClose} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onClose} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.avoider}
@@ -130,10 +130,10 @@ export default function AuthSheet({ visible, initialMode = 'login', onClose, onS
 
           {view === 'login' || view === 'register' ? (
             <View style={[styles.tabs, { marginVertical: spacing.md }]}>
-              <Pressable onPress={() => go('login')} style={tabStyle(view === 'login')}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Log in" onPress={() => go('login')} style={tabStyle(view === 'login')}>
                 <Text style={[styles.tabText, { color: view === 'login' ? colors.onPrimary : colors.text }]}>Log in</Text>
               </Pressable>
-              <Pressable onPress={() => go('register')} style={tabStyle(view === 'register')}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Register" onPress={() => go('register')} style={tabStyle(view === 'register')}>
                 <Text style={[styles.tabText, { color: view === 'register' ? colors.onPrimary : colors.text }]}>Register</Text>
               </Pressable>
             </View>
@@ -209,15 +209,15 @@ export default function AuthSheet({ visible, initialMode = 'login', onClose, onS
 
           {/* Secondary links vary by view. */}
           {view === 'login' ? (
-            <Pressable onPress={() => go('forgot')} disabled={busy} style={styles.linkRow} hitSlop={8}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Forgot password?" onPress={() => go('forgot')} disabled={busy} style={styles.linkRow} hitSlop={8}>
               <Text style={[styles.link, { color: colors.primary }]}>Forgot password?</Text>
             </Pressable>
           ) : view === 'forgot' || view === 'reset' ? (
-            <Pressable onPress={() => go('login')} disabled={busy} style={styles.linkRow} hitSlop={8}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Back to log in" onPress={() => go('login')} disabled={busy} style={styles.linkRow} hitSlop={8}>
               <Text style={[styles.link, { color: colors.textMuted }]}>Back to log in</Text>
             </Pressable>
           ) : (
-            <Pressable onPress={onClose} disabled={busy} style={styles.linkRow} hitSlop={8}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={onClose} disabled={busy} style={styles.linkRow} hitSlop={8}>
               <Text style={[styles.link, { color: colors.textMuted }]}>Cancel</Text>
             </Pressable>
           )}

@@ -22,8 +22,6 @@ export type AnalyticsEvent =
   | 'plate_cache_hit'
   | 'plate_cache_miss'
   | 'plate_lookup_quota_hit'
-  | 'mileage_entered'
-  | 'asking_price_entered'
   | 'vehicle_match_viewed'
   | 'vehicle_confirmed'
   | 'vehicle_rejected'

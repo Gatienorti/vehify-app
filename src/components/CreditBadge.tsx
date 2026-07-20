@@ -4,10 +4,10 @@ import { useTheme } from '../theme';
 import { useCredits } from '../hooks/useCredits';
 
 /**
- * Chip showing the report-credit balance. Rendered ONLY once the user has ever
- * held credits — invisible to the vast majority who only ever use in-app
- * purchase (keeps "Credits: 0" from being confusing noise). A zero balance
- * shows in red as a gentle "top up" cue.
+ * Chip showing the report-credit balance. ALWAYS visible — even at 0 for a
+ * user who never held credits (owner decision 2026-07-20: the pill doubles as
+ * awareness that credits exist at all). A zero balance shows in red as a
+ * gentle "top up" cue.
  *
  * It only DISPLAYS balance — no link or steer to buy elsewhere (credits are
  * purchased on the website; App Store rules forbid pointing users there from
@@ -29,9 +29,7 @@ export default function CreditBadge({
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
-  const { balance, everHeld } = useCredits();
-
-  if (!everHeld) return null;
+  const { balance } = useCredits();
 
   const overlay = variant === 'overlay';
   const header = variant === 'header';

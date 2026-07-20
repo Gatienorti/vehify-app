@@ -146,15 +146,28 @@ const fullReport: ReportResponse = {
   },
 };
 
-// Tier-3 report: buyScore null, no history, and NO odometer timeline —
-// readings are history-class data with no real tier-3 source.
+// Buyer Report: buyScore null, no history, NO odometer timeline (readings
+// are history-class data), and — since the valuation move — VALUATION-FREE:
+// no market value, offer, negotiation, comps, curve, or deal. Those are
+// Premium content; old purchased reports may still carry them.
 const analysisOnlyReport: ReportResponse = {
   ...fullReport,
   tier: 'buyers_analysis',
   analysis: {
     ...fullReport.analysis,
     buyScore: null,
-    deal: { verdict: null, priceDelta: null, reason: 'Add the asking price for a verdict.' },
+    deal: null,
+    askingPrice: null,
+    estimatedValue: null,
+    valueLow: null,
+    valueHigh: null,
+    msrp: null,
+    depreciationPct: null,
+    suggestedOffer: null,
+    negotiationAdvice: null,
+    buyerMileage: null,
+    valueByMileage: [],
+    carfaxValue: null,
     mileageHistory: [],
     rollbackDetected: false,
   },
@@ -190,6 +203,12 @@ describe('backend contract fixtures (v2.1)', () => {
   it('keeps the honesty split: tier-3 has null buyScore, tier-4 a real one', () => {
     expect(analysisOnlyReport.analysis.buyScore).toBeNull();
     expect(analysisOnlyReport.history).toBeNull();
+    // Valuation move: a Buyer Report ships zero OWN-valuation content —
+    // but listing comps (raw observed asking prices) stay on both tiers.
+    expect(analysisOnlyReport.analysis.estimatedValue).toBeNull();
+    expect(analysisOnlyReport.analysis.suggestedOffer).toBeNull();
+    expect(analysisOnlyReport.analysis.deal).toBeNull();
+    expect(analysisOnlyReport.analysis.listingComps?.count).toBeGreaterThan(0);
     expect(fullReport.analysis.buyScore?.score).toBe(74);
     expect(fullReport.history?.accidents).toBe(2);
     expect(fullReport.history?.historyBasedValue?.amount).toBe(9680);

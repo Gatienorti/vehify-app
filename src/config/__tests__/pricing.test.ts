@@ -9,8 +9,8 @@ describe('creditCostFor', () => {
     expect(creditCostFor('complete_history')).toBe(2);
   });
 
-  it('Complete History as an upgrade is discounted to 1 credit', () => {
-    expect(creditCostFor('complete_history', true)).toBe(1);
+  it('Complete History costs 2 credits even as an upgrade (no discount)', () => {
+    expect(creditCostFor('complete_history', true)).toBe(2);
   });
 
   it('the upgrade flag does not discount the Buyer Report', () => {

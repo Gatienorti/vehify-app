@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme';
 import PrimaryButton from './PrimaryButton';
@@ -25,13 +25,21 @@ export default function DeleteAccountModal({ visible, busy, onConfirm, onClose }
   const [typed, setTyped] = useState('');
   const armed = typed.trim().toUpperCase() === CONFIRM_WORD;
 
+  // Re-arm the friction on every open — the parent may close the modal
+  // directly (success/failure paths call onClose without our close()), and a
+  // reopen must never arrive with DELETE pre-typed.
+  useEffect(() => {
+    if (visible) setTyped('');
+  }, [visible]);
+
   const close = () => {
     setTyped('');
     onClose();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
+    // Android back must not dismiss mid-request, same as the backdrop tap.
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={busy ? () => {} : close}>
       <View style={styles.backdrop}>
         {/* Tap outside to dismiss — but never mid-request. */}
         <Pressable style={StyleSheet.absoluteFill} onPress={busy ? undefined : close} />
@@ -54,6 +62,7 @@ export default function DeleteAccountModal({ visible, busy, onConfirm, onClose }
             onChangeText={setTyped}
             placeholder={CONFIRM_WORD}
             placeholderTextColor={colors.textMuted}
+            accessibilityLabel={`Type ${CONFIRM_WORD} to confirm account deletion`}
             autoCapitalize="characters"
             autoCorrect={false}
             editable={!busy}

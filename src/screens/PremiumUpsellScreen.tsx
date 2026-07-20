@@ -1,14 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import React, { useEffect } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CircleCheckBig } from 'lucide-react-native';
 import { useTheme } from '../theme';
@@ -19,18 +10,17 @@ import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
 import { useCredits } from '../hooks/useCredits';
 import { PRICING, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
-import { parseOptionalPositiveInt } from '../utils/number';
 import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'PremiumUpsell'>;
 
-// v2.1 honesty split: the analysis judges the MODEL and the PRICE — the
-// per-VIN Buy Score is the Complete History promise, never implied here.
+// Honesty split (valuation move): the Buyer Report judges the MODEL —
+// valuation (market value, suggested offer, negotiation) AND the per-VIN Buy
+// Score are the Premium promise, never implied on the analysis tier.
 // Hedge anything a provider may not cover (old/rare vehicles can no-hit on
 // value; NHTSA only crash-tests some models) — never promise undeliverables.
-// Hedges render as small muted text after the label — visible honesty
-// without stealing weight from the promise itself. Starred lines share ONE
-// small footnote under the list instead of inline hedges wrapping mid-line.
+// Starred lines share ONE small footnote under the list instead of inline
+// hedges wrapping mid-line.
 interface IncludedLine {
   label: string;
   starred?: boolean;
@@ -41,16 +31,16 @@ const AVAILABILITY_FOOTNOTE =
 
 const ANALYSIS_INCLUDED: IncludedLine[] = [
   { label: 'Model Score — complaints, recalls, TSBs & federal investigations' },
-  { label: 'Deal verdict on the asking price', starred: true },
-  { label: 'Market value & suggested offer', starred: true },
-  { label: 'Value vs. mileage & negotiation advice' },
   { label: 'Crash ratings & fuel costs', starred: true },
+  { label: 'Recent comparable listings', starred: true },
   { label: 'Maintenance outlook for this model' },
 ];
 
 const HISTORY_INCLUDED: IncludedLine[] = [
   { label: 'Everything in the Buyer Report' },
   { label: 'Buy Score for this exact VIN' },
+  { label: 'Market value & suggested offer', starred: true },
+  { label: 'Negotiation advice', starred: true },
   { label: 'Accident & collision history', starred: true },
   { label: 'Title brands (salvage, flood, rebuilt)' },
   { label: 'Theft & odometer records' },
@@ -70,10 +60,6 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const { balance } = useCredits();
   const creditCost = creditCostFor(tier, tier === 'complete_history');
   const useCredit = balance >= creditCost;
-  // Buyer-entered context (optional, analysis only) — they're standing at the
-  // car. Powers the deal verdict and the mileage-personalized valuation.
-  const [mileageText, setMileageText] = useState('');
-  const [askingPriceText, setAskingPriceText] = useState('');
   const title = isAnalysis ? 'Buyer Report' : 'Premium Report';
   const included = isAnalysis ? ANALYSIS_INCLUDED : HISTORY_INCLUDED;
   const price = isAnalysis ? PRICING.buyersAnalysis : PRICING.completeUpgrade;
@@ -95,11 +81,7 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
 
   const doBuy = async () => {
     try {
-      const opts = {
-        mileage: isAnalysis ? parseOptionalPositiveInt(mileageText) : undefined,
-        askingPrice: isAnalysis ? parseOptionalPositiveInt(askingPriceText) : undefined,
-      };
-      const confirm = useCredit ? await redeem(vin, tier, opts) : await buy(vin, tier, opts);
+      const confirm = useCredit ? await redeem(vin, tier) : await buy(vin, tier);
       if (isAnalysis) {
         // Rebuild the stack as Tabs → Report: once the report is owned, the
         // basic page below is redundant — back should land on Scan.
@@ -132,48 +114,7 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        // Clear the native header + status bar so the focused input stays visible.
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-      >
-      <ScrollView
-        contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Inputs FIRST — the previous screen already sold the features; this
-            step is about acting. (Analysis tier only.) */}
-        {isAnalysis ? (
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
-            <Text style={[styles.inputsTitle, { color: colors.text }]}>Standing at the car?</Text>
-            <Text style={[styles.inputsHint, { color: colors.textMuted }]}>
-              Add the odometer reading and asking price to get a deal verdict and a value
-              personalized to this exact mileage. Both optional.
-            </Text>
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Odometer (miles)</Text>
-            <TextInput
-              value={mileageText}
-              onChangeText={setMileageText}
-              placeholder="e.g. 78200"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={7}
-              style={[styles.input, { color: colors.text, borderColor: colors.border, borderRadius: radius.md }]}
-            />
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Asking price ($)</Text>
-            <TextInput
-              value={askingPriceText}
-              onChangeText={setAskingPriceText}
-              placeholder="e.g. 18500"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={7}
-              style={[styles.input, { color: colors.text, borderColor: colors.border, borderRadius: radius.md }]}
-            />
-          </View>
-        ) : null}
-
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
         {/* Compact reminder of what's included (the hard sell already
             happened on the basic page). */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
@@ -194,13 +135,12 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
         {/* Honest limits — don't promise data providers can't deliver (spec §12). */}
         <Text style={[styles.disclaimer, { color: colors.textMuted }]}>
           {isAnalysis
-            ? 'Market value and analysis are estimates based on available data and comparable listings. They are guidance, not an appraisal.'
-            : 'Vehicle history data depends on available government, insurance, auction, and commercial records. No provider can guarantee every event is reported.'}
+            ? 'Scores and outlooks are based on public records for this model — complaints, recalls, bulletins and crash tests. They are guidance, not an inspection.'
+            : 'Vehicle history and market value depend on available government, insurance, auction, and commercial records. No provider can guarantee every event is reported.'}
         </Text>
 
         <PrimaryButton label={buttonLabel} loading={buying} onPress={() => void doBuy()} />
       </ScrollView>
-      </KeyboardAvoidingView>
 
       <LoadingOverlay
         visible={buying}
@@ -219,8 +159,4 @@ const styles = StyleSheet.create({
   rowText: { fontSize: 15, flex: 1 },
   hedge: { fontSize: 12, fontWeight: '500' },
   disclaimer: { fontSize: 13, lineHeight: 19 },
-  inputsTitle: { fontSize: 16, fontWeight: '700' },
-  inputsHint: { fontSize: 13, lineHeight: 19 },
-  inputLabel: { fontSize: 13, fontWeight: '600', marginTop: 2 },
-  input: { borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
 });

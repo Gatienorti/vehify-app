@@ -5,9 +5,8 @@ import { CircleCheckBig } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import VehicleCard from '../components/VehicleCard';
 import PrimaryButton from '../components/PrimaryButton';
-import BuyAnalysisSheet from '../components/BuyAnalysisSheet';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { VIN_DECODE_MESSAGES } from '../config/loadingMessages';
+import { BUILDING_REPORT_MESSAGES, VIN_DECODE_MESSAGES } from '../config/loadingMessages';
 import { track } from '../config/analytics';
 import { useGetPurchasesQuery, useGetVehicleBasicQuery, useLookupVinMutation } from '../services/api';
 import { useRecordLookup } from '../hooks/useRecordLookup';
@@ -62,7 +61,6 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   // that can claim a report the backend no longer has.
   const { data: purchases } = useGetPurchasesQuery();
   const purchase = purchases?.find((r) => r.vin === vin && r.reportId);
-  const [buySheetOpen, setBuySheetOpen] = useState(false);
   const { buy, redeem, buying } = usePurchaseReport();
   // Credits-first: if the buyer holds enough credits, spend them instead of an
   // in-app purchase. Not enough (incl. zero) → the $ path, with no credit
@@ -85,13 +83,15 @@ export default function BasicResultScreen({ navigation, route }: Props) {
     track('basic_report_viewed', { vin });
   }, [vin]);
 
-  // Purchase runs right here (sheet stays up with the building overlay);
-  // success rebuilds the stack as Tabs → Report so back lands on Scan.
-  const buyAnalysis = async (mileage: number | undefined, askingPrice: number | undefined, zip?: string) => {
+  // Purchase runs right here — one tap, no input sheet (the odometer/asking
+  // price fields died with the valuation move: the Buyer Report is
+  // valuation-free, and Premium prices from the history odometer). Success
+  // rebuilds the stack as Tabs → Report so back lands on Scan.
+  const buyAnalysis = async () => {
     try {
       const confirm = useCredit
-        ? await redeem(vin, 'buyers_analysis', { mileage, askingPrice, zip })
-        : await buy(vin, 'buyers_analysis', { mileage, askingPrice, zip });
+        ? await redeem(vin, 'buyers_analysis')
+        : await buy(vin, 'buyers_analysis');
       navigation.reset({
         index: 1,
         routes: [
@@ -107,7 +107,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
           ? 'Your credit wasn’t spent. Check your connection and try again.'
           : 'You haven’t been charged twice — a paid purchase is resumed on retry.',
         [
-          { text: 'Try again', onPress: () => void buyAnalysis(mileage, askingPrice, zip) },
+          { text: 'Try again', onPress: () => void buyAnalysis() },
           { text: 'Not now', style: 'cancel' },
         ],
       );
@@ -196,9 +196,10 @@ export default function BasicResultScreen({ navigation, route }: Props) {
           />
         ) : (
           /* Upsell to Buyer's Analysis — the funnel's money moment, sold as a
-             proper offer card, not a gray paragraph. v2.1 honesty: Model Score
-             + deal verdict; the per-VIN Buy Score is the Complete History
-             promise, never implied here. */
+             proper offer card, not a gray paragraph. Honesty: the Buyer
+             Report judges the MODEL (score, recalls, safety, upkeep);
+             valuation and the per-VIN Buy Score are the Premium promise,
+             never implied here. */
           <View
             style={[
               styles.upsell,
@@ -215,9 +216,9 @@ export default function BasicResultScreen({ navigation, route }: Props) {
             {(
               [
                 { label: 'Model Score — real complaints, recalls & federal investigations' },
-                { label: 'Market value & suggested offer', starred: true },
-                { label: 'A verdict on the asking price', starred: true },
-                { label: 'Negotiation advice & maintenance outlook' },
+                { label: 'Crash ratings, fuel costs & open recalls', starred: true },
+                { label: 'Recent comparable listings', starred: true },
+                { label: 'Maintenance outlook & plain-English recommendation' },
               ] as { label: string; starred?: boolean }[]
             ).map((line) => (
               <View key={line.label} style={styles.featureRow}>
@@ -239,7 +240,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
               }
               onPress={() => {
                 track('premium_cta_viewed', { vin, tier: 'buyers_analysis' });
-                setBuySheetOpen(true);
+                void buyAnalysis();
               }}
               style={{ marginTop: 6 }}
             />
@@ -247,16 +248,9 @@ export default function BasicResultScreen({ navigation, route }: Props) {
         )}
       </ScrollView>
 
-      <BuyAnalysisSheet
-        visible={buySheetOpen}
-        price={PRICING.buyersAnalysis}
-        creditCost={useCredit ? buyerCreditCost : undefined}
-        submitting={buying}
-        // EV/plug-in: the sheet adds a ZIP field (charging density on the report).
-        isElectric={/electric|plug-in/i.test(data.vehicle.fuelType ?? '')}
-        onCancel={() => !buying && setBuySheetOpen(false)}
-        onBuy={(mileage, askingPrice, zip) => void buyAnalysis(mileage, askingPrice, zip)}
-      />
+      {/* Credit redeems have no store sheet — show progress while the
+          backend builds; store purchases surface RevenueCat's own UI. */}
+      <LoadingOverlay visible={buying} title="Building your analysis…" messages={BUILDING_REPORT_MESSAGES} />
     </SafeAreaView>
   );
 }

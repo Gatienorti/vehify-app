@@ -83,7 +83,7 @@ export default function ScanConfirmSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       {/* Transparent backdrop (still tap-to-cancel): the scanner behind is
           showing the frozen detection shot — it must read clean, not dimmed. */}
-      <Pressable style={styles.backdrop} onPress={onCancel} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.backdrop} onPress={onCancel} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.avoider}
@@ -110,6 +110,8 @@ export default function ScanConfirmSheet({
         </View>
 
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Select state"
           onPress={() => !submitting && setStatePickerOpen(true)}
           style={[styles.stateSelect, { borderColor: colors.border, borderRadius: radius.md }]}
         >
@@ -133,7 +135,7 @@ export default function ScanConfirmSheet({
           onPress={confirm}
           style={{ marginTop: spacing.md }}
         />
-        <Pressable onPress={onCancel} disabled={submitting} style={styles.cancelRow} hitSlop={8}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancel and keep scanning" onPress={onCancel} disabled={submitting} style={styles.cancelRow} hitSlop={8}>
           <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel &amp; keep scanning</Text>
         </Pressable>
       </View>
@@ -147,6 +149,8 @@ export default function ScanConfirmSheet({
             keyExtractor={(s) => s.code}
             renderItem={({ item }) => (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
                 onPress={() => { setState(item.code); setStatePickerOpen(false); setError(undefined); }}
                 style={[styles.stateRow, { borderColor: colors.border }]}
               >

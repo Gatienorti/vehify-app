@@ -35,12 +35,6 @@ export interface PurchaseStartRequest {
   vin: string;
   tier: PaidTier;
   productId: string;
-  /** Optional buyer-entered odometer reading (miles) — the buyer is at the car. */
-  mileage?: number;
-  /** Optional seller's asking price (dollars) — powers the Deal verdict. */
-  askingPrice?: number;
-  /** Optional buyer 5-digit ZIP — unlocks charging density on EV reports. */
-  zip?: string;
 }
 
 export interface PurchaseStartResponse {
@@ -89,12 +83,6 @@ export interface CreditsResponse {
 export interface RedeemReportRequest {
   vin: string;
   tier: PaidTier;
-  /** Optional buyer-entered odometer (miles) — powers the deal verdict/value. */
-  mileage?: number;
-  /** Optional seller's asking price (dollars). */
-  askingPrice?: number;
-  /** Optional buyer 5-digit ZIP — charging density on EV reports. */
-  zip?: string;
   /**
    * Client-stable key for this purchase attempt. A retry after a dropped
    * response reuses it so the backend returns the same report instead of
