@@ -113,6 +113,12 @@ export default function AccountScreen(_props: Props) {
       });
     } catch (e) {
       if ((e as { code?: string }).code === statusCodes.SIGN_IN_CANCELLED) return;
+      if (__DEV__) {
+        // DEVELOPER_ERROR here = this build's signing-cert SHA-1 isn't on an
+        // Android OAuth client in Google Cloud (register debug AND release).
+        const err = e as { code?: string; message?: string };
+        console.log('[googleSignIn] failed:', err.code ?? '', err.message ?? String(e));
+      }
       Alert.alert('Sign-in didn’t complete', 'Please try again.');
     }
   };

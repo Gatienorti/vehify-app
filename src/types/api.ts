@@ -110,8 +110,8 @@ export interface ReportPendingResponse {
 /** What GET /report/{id} actually returns — narrow with `isReportReady`. */
 export type ReportFetchResponse = ReportResponse | ReportPendingResponse;
 
-export function isReportReady(r: ReportFetchResponse | undefined): r is ReportResponse {
-  return r !== undefined && (r.status === undefined || r.status === 'ready');
+export function isReportReady(r: ReportFetchResponse | null | undefined): r is ReportResponse {
+  return r != null && (r.status === undefined || r.status === 'ready');
 }
 
 /** POST /report/{id}/refresh and /retry both answer with the poll-me payload. */

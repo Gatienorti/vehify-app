@@ -3,7 +3,6 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -85,7 +84,7 @@ export default function ScanConfirmSheet({
           showing the frozen detection shot — it must read clean, not dimmed. */}
       <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.backdrop} onPress={onCancel} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.avoider}
         pointerEvents="box-none"
       >

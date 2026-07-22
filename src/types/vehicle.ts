@@ -74,6 +74,12 @@ export interface FuelEconomy {
   gas_price_per_gallon?: number | null;
   /** ISO date of the price week behind annual_fuel_cost_current. */
   gas_price_as_of?: string | null;
+  /** EV/PHEV context (null on conventional cars; combined_mpg is MPGe for EVs). */
+  electric_range?: number | null;
+  /** Hours to charge on a 240V (Level 2) charger. */
+  charge_time_240v?: number | null;
+  /** EPA alternative-fuel class, e.g. "EV", "Plug-in Hybrid Vehicle". */
+  atv_type?: string | null;
 }
 
 /**

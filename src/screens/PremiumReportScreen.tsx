@@ -328,8 +328,10 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
   const [showClosedInvestigations, setShowClosedInvestigations] = useState(false);
   const [showRecalls, setShowRecalls] = useState(false);
 
+  // `!= null` (not `!== undefined`): a null body from the API must land in the
+  // loading state, not crash on `.status` (seen on the Android dev build).
   const generating =
-    data !== undefined && !isReportReady(data) && data.status === 'generating' && !pollTimedOut;
+    data != null && !isReportReady(data) && data.status === 'generating' && !pollTimedOut;
 
   // Start/stop the poll from what the server last said — render-phase state
   // adjustment (per React docs), not an effect: no cascading render warning.
@@ -382,7 +384,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
   // The queued build burned its retries (or our poll cap hit). The purchase
   // is safe — recovery is a FREE re-queue via /retry.
-  if (data !== undefined && !isReportReady(data) && (data.status === 'failed' || pollTimedOut)) {
+  if (data != null && !isReportReady(data) && (data.status === 'failed' || pollTimedOut)) {
     const pendingId = data.id;
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
@@ -632,7 +634,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               ) : null}
               {history.autocheckScore ? (
                 <StatRow
-                  label="AutoCheck score"
+                  label="History score"
                   value={
                     history.autocheckScore.rangeLow != null
                       ? `${history.autocheckScore.score} (similar cars: ${history.autocheckScore.rangeLow}–${history.autocheckScore.rangeHigh ?? '?'})`
@@ -1166,14 +1168,30 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           <CollapsibleSection
             title="Fuel economy"
             icon={Fuel}
-            summary={`${analysis.fuelEconomy.combined_mpg} MPG combined`}
+            summary={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'} combined`}
             defaultOpen={!history}
           >
-            <StatRow label="Combined" value={`${analysis.fuelEconomy.combined_mpg} MPG`} />
+            <StatRow
+              label="Combined"
+              value={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'}`}
+            />
             {analysis.fuelEconomy.city_mpg && analysis.fuelEconomy.highway_mpg ? (
               <StatRow
                 label="City / Highway"
-                value={`${analysis.fuelEconomy.city_mpg} / ${analysis.fuelEconomy.highway_mpg} MPG`}
+                value={`${analysis.fuelEconomy.city_mpg} / ${analysis.fuelEconomy.highway_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'}`}
+              />
+            ) : null}
+            {/* EV/PHEV context — electric range + Level 2 charge time (EPA). */}
+            {analysis.fuelEconomy.electric_range ? (
+              <StatRow
+                label="Electric range"
+                value={`${analysis.fuelEconomy.electric_range} mi`}
+              />
+            ) : null}
+            {analysis.fuelEconomy.charge_time_240v ? (
+              <StatRow
+                label="Charge time (240V)"
+                value={`~${analysis.fuelEconomy.charge_time_240v} hr`}
               />
             ) : null}
             {/* Driver-reported average vs the sticker — only sent with 3+ drivers. */}
