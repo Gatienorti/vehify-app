@@ -1,32 +1,33 @@
 import type { PaidTier } from '../types/vehicle';
 
 /**
- * Single source of truth for report-tier pricing (Vehify Report Tiers & API
- * Cost, MVP v2). Customer-facing prices only — provider/API costs live in the
- * Laravel backend, never in the app.
+ * Single source of truth for report-tier pricing. Customer-facing prices
+ * only — provider/API costs live in the Laravel backend, never in the app.
  *
  * Tiers, cheapest → most valuable:
- *   Free VIN       — verify the vehicle (NHTSA, $0.00)
- *   Plate          — identify the vehicle (Plate→VIN, $0.25, credited toward Buyer Report)
- *   Buyer Report   — should I buy this? ($1.99, or $1.74 after plate credit)
- *   Premium Report — what happened to this VIN? (+$3 upgrade → $4.99 total)
+ *   Free VIN       — verify the vehicle (FREE)
+ *   Plate          — identify the vehicle (Plate→VIN, FREE — funnel opener)
+ *   Buyer Report   — is this MODEL a good buy? ($1.99 — scores/recalls/safety;
+ *                    valuation-free by design, never draws paid value APIs)
+ *   Premium Report — is this CAR a good buy? (+$2.99 upgrade → $4.98 total:
+ *                    market value, suggested offer, negotiation + full
+ *                    history with the per-VIN Buy Score)
+ *
+ * All prices sit on the store-standard x.99 grid (Apple/Google price points).
  */
 export const PRICING = {
-  /** Plate→VIN lookup fee. Credited toward Buyer's Analysis. */
-  plateLookup: 0.25,
-  /** Buyer's Analysis full price. */
+  /** Buyer's Analysis. */
   buyersAnalysis: 1.99,
-  /** Credit applied when the vehicle was reached via a paid plate lookup. */
-  plateCredit: 0.25,
   /** Upgrade price from Buyer Report → Premium Report. */
-  completeUpgrade: 3.0,
+  completeUpgrade: 2.99,
   /** Total paid for the Premium Report (Buyer Report + upgrade). */
-  completeTotal: 4.99,
+  completeTotal: 4.98,
   /**
    * Re-pull a stale report (30+ days) with current data. Priced above the
-   * ~$1.50 provider cost of a fresh history pull (CARFAX).
+   * ~$1.50 provider cost of a fresh history pull (CARFAX) so the margin
+   * survives the store's cut (~$2.54 net at 15%).
    */
-  reportRefresh: 1.99,
+  reportRefresh: 2.99,
 } as const;
 
 /** RevenueCat product identifiers per paid tier. */
@@ -35,22 +36,33 @@ export const PRODUCT_IDS: Record<PaidTier, string> = {
   complete_history: 'complete_history_upgrade',
 };
 
-/**
- * Product id for the $0.25 plate lookup (tier 2 — not a PaidTier/report).
- * Provisional until the real RevenueCat product is created; the backend
- * accepts any string today.
- */
-export const PLATE_PRODUCT_ID = 'plate_lookup';
-
-/** Product id for refreshing a stale report's data ($1.99). */
+/** Product id for refreshing a stale report's data ($2.99). */
 export const REPORT_REFRESH_PRODUCT_ID = 'report_refresh';
 
-/** Price for Buyer's Analysis, applying the plate credit when earned. */
-export function buyersAnalysisPrice(hasPlateCredit: boolean): number {
-  return hasPlateCredit ? PRICING.buyersAnalysis - PRICING.plateCredit : PRICING.buyersAnalysis;
+/**
+ * Credit cost per report, spent instead of an in-app purchase (credits are
+ * bought on the website). The backend is the authority on the actual charge —
+ * these values only drive the button label ("Use N credits"). The Premium
+ * Report is 3 credits TOTAL (the Buyer's 1 + 2 for the full history); on
+ * mobile complete_history is always reached as an upgrade, so the button
+ * charges the 2-credit delta — hence the value here is 2.
+ */
+export const CREDIT_COST: Record<PaidTier, number> = {
+  buyers_analysis: 1,
+  complete_history: 2,
+};
+
+/** Credits charged to add the full history — the 2-credit upgrade delta (Premium is 3 total). */
+export function creditCostFor(tier: PaidTier, _isUpgrade = false): number {
+  return CREDIT_COST[tier];
 }
 
-/** Format a USD amount for display, e.g. 2.74 → "$2.74". */
+/** "Use 1 credit" / "Use 2 credits" — the credit-path button label. */
+export function creditLabel(cost: number): string {
+  return `Use ${cost} credit${cost === 1 ? '' : 's'}`;
+}
+
+/** Format a USD amount for display, e.g. 1.99 → "$1.99". */
 export function formatUsd(amount: number): string {
   return `$${amount.toFixed(2)}`;
 }

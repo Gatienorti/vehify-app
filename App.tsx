@@ -10,6 +10,9 @@ import { RootNavigator } from './src/navigation/AppNavigator';
 import { hydrateHistory } from './src/features/history/localHistory';
 import { hydrateSettings } from './src/features/settings/localSettings';
 import { hydrateAuthSession } from './src/features/auth/localAuth';
+import { hydrateCredits } from './src/features/credits/localCredits';
+import { getDeviceId } from './src/config/deviceId';
+import { initRevenueCat } from './src/config/revenuecat';
 import { track } from './src/config/analytics';
 
 /** Follows the effective theme — including the user's dark-mode override. */
@@ -23,6 +26,10 @@ export default function App() {
     void hydrateHistory(store.dispatch);
     void hydrateSettings(store.dispatch);
     void hydrateAuthSession(store.dispatch);
+    void hydrateCredits(store.dispatch);
+    // RevenueCat customer id = our device id, matching the backend's
+    // device-keyed purchase ownership.
+    void getDeviceId().then(initRevenueCat);
     track('app_opened');
   }, []);
 

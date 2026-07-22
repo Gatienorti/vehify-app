@@ -31,49 +31,10 @@ export interface VinLookupResponse {
 
 export type BasicVehicleResponse = BasicReport;
 
-/** Paid $0.25 plate lookup (tier 2) — two-phase like report purchases. */
-export interface PlatePurchaseStartRequest {
-  plate: string;
-  state: string;
-  productId: string;
-}
-
-/**
- * Resolve-then-charge: start() looks up the plate FIRST and only returns a
- * chargeable `purchaseToken` on a hit. A miss returns `found: false` with no
- * token — the app must NOT trigger the store purchase (the user is never
- * charged for a plate we can't resolve) and steers to free VIN entry.
- * Mirrors PlatePurchaseController@start in ../vehify-web.
- */
-export type PlatePurchaseStartResponse =
-  | { found: true; purchaseToken: string }
-  | { found: false };
-
-export interface PlatePurchaseConfirmRequest {
-  purchaseToken: string;
-  platform: 'ios' | 'android';
-  appStoreTransactionId: string;
-}
-
-/**
- * Confirm reveals the VIN that start() already resolved (served from cache, no
- * extra provider call) — only ever called for a hit, so it always carries the
- * full PlateLookupResponse shape (hand it straight to VehicleMatch).
- * Mirrors PlatePurchaseController@confirm in ../vehify-web.
- */
-export type PlatePurchaseConfirmResponse =
-  { purchaseId: string; found: true } & PlateLookupResponse;
-
 export interface PurchaseStartRequest {
   vin: string;
   tier: PaidTier;
   productId: string;
-  /** Optional buyer-entered odometer reading (miles) — the buyer is at the car. */
-  mileage?: number;
-  /** Optional seller's asking price (dollars) — powers the Deal verdict. */
-  askingPrice?: number;
-  /** Optional buyer 5-digit ZIP — unlocks charging density on EV reports. */
-  zip?: string;
 }
 
 export interface PurchaseStartResponse {
@@ -102,6 +63,34 @@ export interface PurchaseConfirmResponse {
   status?: ReportGenerationStatus;
 }
 
+/**
+ * Report credits (bought on the website — no Apple/Google cut — and spent in
+ * the app). Balance is keyed by account/device on the backend. Anonymous
+ * devices that never bought credits get 0. GET /api/credits.
+ */
+export interface CreditsResponse {
+  balance: number;
+}
+
+/**
+ * Redeem a report with credits instead of an in-app purchase. The backend is
+ * authoritative on the credit COST (it knows what the buyer already owns — a
+ * complete-history upgrade costs less than a from-scratch history) and on the
+ * balance check; the app only sends intent. Returns the same shape as a paid
+ * confirm, so the caller's post-purchase flow is identical.
+ * POST /api/report/redeem.
+ */
+export interface RedeemReportRequest {
+  vin: string;
+  tier: PaidTier;
+  /**
+   * Client-stable key for this purchase attempt. A retry after a dropped
+   * response reuses it so the backend returns the same report instead of
+   * spending a second credit.
+   */
+  idempotencyKey?: string;
+}
+
 export type ReportResponse = Report & {
   id: string;
   status?: 'ready';
@@ -121,8 +110,8 @@ export interface ReportPendingResponse {
 /** What GET /report/{id} actually returns — narrow with `isReportReady`. */
 export type ReportFetchResponse = ReportResponse | ReportPendingResponse;
 
-export function isReportReady(r: ReportFetchResponse | undefined): r is ReportResponse {
-  return r !== undefined && (r.status === undefined || r.status === 'ready');
+export function isReportReady(r: ReportFetchResponse | null | undefined): r is ReportResponse {
+  return r != null && (r.status === undefined || r.status === 'ready');
 }
 
 /** POST /report/{id}/refresh and /retry both answer with the poll-me payload. */

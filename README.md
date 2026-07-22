@@ -32,24 +32,36 @@ is no in-app mock mode.
 | `npm run lint` / `npm run lint:fix` | ESLint |
 | `npm run format` | Prettier |
 
-## What's built (Phase 1–3 + mock purchases)
+## Status
 
-- 3-tab navigation with a prominent center **SCAN** button (History / SCAN / Account).
-- Manual VIN + plate entry with validation (17-char VIN, state-required plate).
-- Cache-aware plate → **confirmation** → free **basic result** → tiered **upsell** flow.
-- Report tiers v2 (`src/config/pricing.ts`): free VIN → plate $0.25 (credited) →
-  **Buyer's Analysis** $2.99 (**AI Buy Score**, market value, suggested offer) →
-  **Complete Vehicle History** +$5 upgrade (accidents, title, theft, odometer, owners).
-- Local, login-free history persisted on-device (AsyncStorage).
-- RTK Query API layer with a mock/real switch; analytics event wrapper.
+**iOS 1.0 is live on the App Store** (July 2026): https://apps.apple.com/us/app/vehify/id6791685358
+Android is in testing ahead of a Play Store launch.
 
-## Not yet built (later phases)
+Everything is built: 3-tab navigation with the center **SCAN** button, live camera
+scanner (on-device ML Kit OCR for plates + VIN barcodes — see `src/ml/` and
+CLAUDE.md → *On-device scanning*), manual VIN/plate entry, cache-aware plate →
+confirmation → free basic result → tiered upsell, report tiers v2
+(`src/config/pricing.ts`: free basic → $1.99 Buyer's Analysis → +$2.99 Complete
+History upgrade), RevenueCat purchases, Apple/Google/email sign-in, and local
+login-free history (AsyncStorage).
 
-- **Phase 4 — camera scanner**: live OCR needs `react-native-vision-camera` + ML Kit
-  and an Expo **dev client** (not Expo Go). The Scan screen currently shows a placeholder.
-- **Real purchases**: RevenueCat non-consumable report products.
-- **Real backend**: swap mocks off once `../vehify-web` endpoints are live.
-- **Account sign-in**: Apple/Google + history sync.
+> The camera scanner needs an **Expo dev client** (`npx expo run:ios --device` /
+> `npx expo run:android --device`) — not Expo Go — and a real device; simulators
+> have no camera, and ML Kit misreads plates shown on monitors (moiré).
+
+## Android
+
+```bash
+npx expo run:android --device   # dev client on a USB-connected phone
+```
+
+- Native project is checked in (`android/`); `adb` lives at `~/Library/Android/sdk/platform-tools`.
+- Release AAB: `cd android && ./gradlew bundleRelease` → `android/app/build/outputs/bundle/release/app-release.aab`.
+  Signing uses the upload keystore at `~/keystores/vehify-upload.jks` via `VEHIFY_UPLOAD_*`
+  properties in the (gitignored) `android/gradle.properties`. Release bundles bake
+  `.env.production` (prod API URL), same as iOS archives.
+- Bump `android.versionCode` in `app.json` **and** `versionCode` in
+  `android/app/build.gradle` for every Play upload.
 
 See `CLAUDE.md` → *Available Agents & Commands* for the scaffolding helpers
 (`screen-builder`, `test-writer`, `provider-builder`, `analytics-auditor`).

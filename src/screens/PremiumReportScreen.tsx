@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AlertTriangle,
@@ -31,7 +31,9 @@ import ScoreBadge from '../components/ScoreBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { useGetReportQuery, useRefreshReportMutation, useRetryReportMutation } from '../services/api';
-import { PRICING, formatUsd } from '../config/pricing';
+import { PurchaseCancelledError, purchaseThroughStore } from '../hooks/usePurchaseReport';
+import { PRICING, REPORT_REFRESH_PRODUCT_ID, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
+import { useCredits } from '../hooks/useCredits';
 import { BUILDING_REPORT_MESSAGES, REPORT_OPEN_MESSAGES } from '../config/loadingMessages';
 import { isReportReady } from '../types/api';
 import {
@@ -53,8 +55,13 @@ const STALE_AFTER_DAYS = 30;
 /** Poll cadence while the backend's queued build runs (generation ≈ 6–18s). */
 const GENERATING_POLL_MS = 2500;
 
-/** Give up polling after this long — a stuck job must not spin the phone forever. */
-const GENERATING_CAP_MS = 90_000;
+/**
+ * Give up polling after this long — a stuck job must not spin the phone
+ * forever. Longer than the backend job's WORST-case retry timeline (3
+ * attempts + 15s/60s backoffs ≈ 150s), so a slow-but-succeeding build never
+ * shows the failure screen.
+ */
+const GENERATING_CAP_MS = 180_000;
 
 function reportAgeDays(generatedAt: string | null | undefined): number | null {
   if (!generatedAt) return null;
@@ -146,7 +153,13 @@ function CollapsibleSection({
   const Chevron = open ? ChevronUp : ChevronDown;
   return (
     <>
-      <Pressable onPress={() => setOpen((o) => !o)} style={styles.sectionHeader} hitSlop={8}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${title}, ${open ? 'collapse' : 'expand'}`}
+        onPress={() => setOpen((o) => !o)}
+        style={styles.sectionHeader}
+        hitSlop={8}
+      >
         {Icon ? <Icon size={17} color={alert ? colors.danger : colors.textMuted} strokeWidth={2.5} /> : null}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
         <View style={styles.collapseRight}>
@@ -193,7 +206,7 @@ function PremiumGroupHeader() {
 function ToggleRow({ label, onPress }: { label: string; onPress: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} style={styles.toggleRow} hitSlop={6}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.toggleRow} hitSlop={6}>
       <Text style={[styles.toggleText, { color: colors.primary }]}>{label}</Text>
     </Pressable>
   );
@@ -285,18 +298,47 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
     { pollingInterval },
   );
   const [refreshReport, { isLoading: refreshing }] = useRefreshReportMutation();
+  const [payingRefresh, setPayingRefresh] = useState(false);
+  // Upgrade is an UPGRADE credit cost (Buyer Report already owned). The actual
+  // spend happens on the upsell screen; here we only match the button label so
+  // credits-first is consistent across the flow.
+  const { balance: creditBalance } = useCredits();
+  const upgradeCreditCost = creditCostFor('complete_history', true);
+  const upgradeWithCredit = creditBalance >= upgradeCreditCost;
+  // The $2 report refresh is a CONSUMABLE store purchase (RevenueCat) followed
+  // by the backend re-queue. Cancel is silence; a store failure never fires
+  // the refresh call.
+  const paidRefresh = async () => {
+    if (!data?.id || payingRefresh) return;
+    setPayingRefresh(true);
+    try {
+      const transactionId = await purchaseThroughStore(REPORT_REFRESH_PRODUCT_ID);
+      // The backend verifies + consumes this exact transaction (once).
+      await refreshReport({ id: data.id, transactionId }).unwrap();
+    } catch (e) {
+      if (!(e instanceof PurchaseCancelledError)) {
+        Alert.alert('Update didn’t complete', 'Please try again.');
+      }
+    } finally {
+      setPayingRefresh(false);
+    }
+  };
   const [retryReport, { isLoading: retrying }] = useRetryReportMutation();
   const [showAllMileage, setShowAllMileage] = useState(false);
   const [showClosedInvestigations, setShowClosedInvestigations] = useState(false);
   const [showRecalls, setShowRecalls] = useState(false);
 
+  // `!= null` (not `!== undefined`): a null body from the API must land in the
+  // loading state, not crash on `.status` (seen on the Android dev build).
   const generating =
-    data !== undefined && !isReportReady(data) && data.status === 'generating' && !pollTimedOut;
+    data != null && !isReportReady(data) && data.status === 'generating' && !pollTimedOut;
 
-  // Start/stop the poll from what the server last said.
-  useEffect(() => {
-    setPollingInterval(generating ? GENERATING_POLL_MS : 0);
-  }, [generating]);
+  // Start/stop the poll from what the server last said — render-phase state
+  // adjustment (per React docs), not an effect: no cascading render warning.
+  const desiredInterval = generating ? GENERATING_POLL_MS : 0;
+  if (pollingInterval !== desiredInterval) {
+    setPollingInterval(desiredInterval);
+  }
 
   // Safety cap: if the build never lands, stop polling and offer a retry.
   useEffect(() => {
@@ -342,7 +384,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
   // The queued build burned its retries (or our poll cap hit). The purchase
   // is safe — recovery is a FREE re-queue via /retry.
-  if (data !== undefined && !isReportReady(data) && (data.status === 'failed' || pollTimedOut)) {
+  if (data != null && !isReportReady(data) && (data.status === 'failed' || pollTimedOut)) {
     const pendingId = data.id;
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
@@ -389,6 +431,29 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
   }
 
   const { analysis, history } = data;
+
+  // The backend resource can emit analysis: null on a corrupt/legacy row even
+  // when the report reads "ready" — render the not-found fallback instead of
+  // crashing on the first analysis.* dereference below.
+  if (!analysis) {
+    return (
+      <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>
+          That report isn&apos;t available
+        </Text>
+        <Text style={[styles.errorBody, { color: colors.textMuted }]}>
+          This report has no analysis data anymore. You can still see the free basic details for
+          this vehicle.
+        </Text>
+        <PrimaryButton
+          label="See basic details"
+          onPress={() => navigation.replace('BasicResult', { vin })}
+          style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }}
+        />
+      </SafeAreaView>
+    );
+  }
+
   const deal = analysis.deal;
   const dealColor =
     deal?.verdict === 'good'
@@ -399,8 +464,65 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           ? colors.scoreRed
           : colors.textMuted;
   const curve = analysis.valueByMileage ?? [];
-  const buyerIdx = nearestMileageIndex(curve, analysis.buyerMileage);
+  // Highlight anchor = the mileage the valuation was computed at, mirroring
+  // the backend blend: the last RECORDED odometer reading wins when higher
+  // (records are credible), else the legacy buyer entry on old reports.
+  const lastRecorded = analysis.mileageHistory.length
+    ? analysis.mileageHistory[analysis.mileageHistory.length - 1].mileage
+    : null;
+  const anchorMileage =
+    lastRecorded != null && (analysis.buyerMileage == null || lastRecorded > analysis.buyerMileage)
+      ? lastRecorded
+      : analysis.buyerMileage;
+  const buyerIdx = nearestMileageIndex(curve, anchorMileage);
   const ageDays = reportAgeDays(data.generatedAt);
+
+  // Rendered inside the premium block on complete_history, and standalone on
+  // LEGACY pre-split Buyer reports that stored a curve — one definition so the
+  // two spots can never drift.
+  const valueCurveSection = curve.length ? (
+    <Section title="Value vs. mileage" icon={TrendingDown} premium>
+      <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
+        Estimated — projected from the current market value to show how
+        mileage typically moves the price. Not per-mile sale data.
+      </Text>
+      {curve.map((p, i) => (
+        <View key={p.mileage} style={styles.curveRow}>
+          <Text
+            style={[
+              styles.curveLabel,
+              { color: i === buyerIdx ? colors.text : colors.textMuted },
+              i === buyerIdx && styles.curveBold,
+            ]}
+          >
+            {`${Math.round(p.mileage / 1000)}k mi`}
+          </Text>
+          <View style={[styles.curveTrack, { backgroundColor: colors.surfaceAlt }]}>
+            <View
+              style={[
+                styles.curveBar,
+                {
+                  width: `${valueBarWidthPct(curve, p.estimate)}%`,
+                  // Always visibly tinted; full brand blue marks the
+                  // row nearest this car's odometer.
+                  backgroundColor: i === buyerIdx ? colors.primary : `${colors.primary}55`,
+                },
+              ]}
+            />
+          </View>
+          <Text
+            style={[
+              styles.curveValue,
+              { color: i === buyerIdx ? colors.text : colors.textMuted },
+              i === buyerIdx && styles.curveBold,
+            ]}
+          >
+            {`$${p.estimate.toLocaleString()}`}
+          </Text>
+        </View>
+      ))}
+    </Section>
+  ) : null;
 
   const verdictFlags = buildVerdictFlags(analysis, history);
   const lastMileage = analysis.mileageHistory[analysis.mileageHistory.length - 1];
@@ -419,13 +541,10 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               This report is {ageDays} days old. Recalls, investigations and market value may have
               changed since — pull the latest records.
             </Text>
-            {/* TODO RevenueCat: real IAP for REPORT_REFRESH_PRODUCT_ID. */}
             <PrimaryButton
               label={`Update report — ${formatUsd(PRICING.reportRefresh)}`}
-              loading={refreshing}
-              onPress={() => {
-                if (data.id) void refreshReport({ id: data.id });
-              }}
+              loading={refreshing || payingRefresh}
+              onPress={() => void paidRefresh()}
               style={{ marginTop: 10 }}
             />
           </View>
@@ -515,7 +634,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               ) : null}
               {history.autocheckScore ? (
                 <StatRow
-                  label="AutoCheck score"
+                  label="History score"
                   value={
                     history.autocheckScore.rangeLow != null
                       ? `${history.autocheckScore.score} (similar cars: ${history.autocheckScore.rangeLow}–${history.autocheckScore.rangeHigh ?? '?'})`
@@ -529,16 +648,41 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               ) : null}
             </Section>
 
-            {/* The report's own valuation of this exact car + the history
-                events it says move the number — a second anchor beside our
-                market estimate, never mixed into the deal verdict. */}
-            {history.historyBasedValue ? (
-              <Section title="History-based value" icon={DollarSign} premium>
-                <StatRow
-                  label="Retail value (from its records)"
-                  value={`$${history.historyBasedValue.amount.toLocaleString()}`}
-                />
-                {history.historyBasedValue.events.map((e) => (
+            {/* Value & pricing — ONE fused card: the record-derived value,
+                the history events that moved it, and the offer guidance.
+                (Fused with the old "History-based value" section: since the
+                CheapVHR fold they were the SAME number twice.) On a provider
+                no-hit (older/rare vehicles) say so explicitly: a silent
+                absence reads as a bug to someone who paid for valuation. */}
+            {!analysis.estimatedValue && !analysis.suggestedOffer && !history.historyBasedValue ? (
+              <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
+                Market value isn&apos;t available for this vehicle from our data sources — coverage
+                is thinner for older models. The scores and records are unaffected.
+              </Text>
+            ) : (
+              <Section title="Value & pricing" icon={DollarSign} premium>
+                {/* Headline: our estimate (record-derived on new reports);
+                    a legacy report without one falls back to the history
+                    report's own retail value so the card never opens blank. */}
+                {analysis.estimatedValue ? (
+                  <StatRow
+                    label={
+                      anchorMileage
+                        ? `Value at ${anchorMileage.toLocaleString()} mi`
+                        : 'Est. market value'
+                    }
+                    value={`$${analysis.estimatedValue.toLocaleString()}`}
+                  />
+                ) : history.historyBasedValue ? (
+                  <StatRow
+                    label="Retail value (from its records)"
+                    value={`$${history.historyBasedValue.amount.toLocaleString()}`}
+                  />
+                ) : null}
+                {/* WHY the number is what it is — the history events that
+                    moved it (accident down, one-owner up). The best rows in
+                    the section: they explain the headline. */}
+                {history.historyBasedValue?.events.map((e) => (
                   <View key={e.label} style={styles.hbvEventRow}>
                     {e.direction === 'down' ? (
                       <TrendingDown size={15} color={colors.danger} strokeWidth={2.5} />
@@ -555,8 +699,44 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                     </Text>
                   </View>
                 ))}
+                {analysis.valueLow && analysis.valueHigh ? (
+                  <StatRow
+                    label="Estimated range"
+                    value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
+                  />
+                ) : null}
+                {/* Legacy dual-anchor: an old report whose estimate came from
+                    CarAPI shows the history value as a second row. On new
+                    reports they're the SAME number (folded) → suppressed. */}
+                {analysis.estimatedValue &&
+                history.historyBasedValue &&
+                history.historyBasedValue.amount !== analysis.estimatedValue ? (
+                  <StatRow
+                    label="History-based retail value"
+                    value={`$${history.historyBasedValue.amount.toLocaleString()}`}
+                  />
+                ) : null}
+                {/* Real MSRP (carapi.app trims, ~2015–2020) — shown only when
+                    the provider has it; hidden otherwise, never fabricated. */}
+                {analysis.msrp ? (
+                  <StatRow label="Original MSRP" value={`$${analysis.msrp.toLocaleString()}`} />
+                ) : null}
+                {analysis.depreciationPct != null ? (
+                  <StatRow label="Lost since new" value={`~${analysis.depreciationPct}%`} />
+                ) : null}
+                {analysis.suggestedOffer ? (
+                  <StatRow label="Suggested offer" value={`$${analysis.suggestedOffer.toLocaleString()}`} />
+                ) : null}
+                {analysis.negotiationAdvice ? (
+                  <Text style={[styles.cardBody, { color: colors.textMuted }]}>{analysis.negotiationAdvice}</Text>
+                ) : null}
               </Section>
-            ) : null}
+            )}
+
+            {/* How mileage moves the price — negotiation ammo, no chart
+                library. A projection from the single market estimate, NOT
+                observed per-mile sale data, so it's labelled as an estimate. */}
+            {valueCurveSection}
 
             {/* The report's own findings — severity marks the DOT, not whole
                 paragraphs; red text is reserved for Alert-level findings. */}
@@ -721,15 +901,53 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </>
         ) : null}
 
-        {/* v2.1 honesty split — the MODEL's track record, always present. On
+        {/* v2.1 honesty split — the MODEL's track record. Present on every new
+            report; some legacy pre-split reports stored null, so guard. On
             premium it reads below the per-VIN block as supporting context. */}
-        <ScoreBadge score={analysis.modelScore} label="Model Score" />
+        {analysis.modelScore ? <ScoreBadge score={analysis.modelScore} label="Model Score" /> : null}
+
+        {/* LEGACY pre-split Buyer reports stored valuation at this tier — old
+            reports render whatever they paid for. New Buyer reports never
+            compose these fields, so this block is absent for them. */}
+        {!history && (analysis.estimatedValue || analysis.suggestedOffer || analysis.msrp) ? (
+          <Section title="Value & pricing" icon={DollarSign} premium>
+            {analysis.estimatedValue ? (
+              <StatRow
+                label={
+                  anchorMileage
+                    ? `Value at ${anchorMileage.toLocaleString()} mi`
+                    : 'Est. market value'
+                }
+                value={`$${analysis.estimatedValue.toLocaleString()}`}
+              />
+            ) : null}
+            {analysis.valueLow && analysis.valueHigh ? (
+              <StatRow
+                label="Estimated range"
+                value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
+              />
+            ) : null}
+            {analysis.msrp ? (
+              <StatRow label="Original MSRP" value={`$${analysis.msrp.toLocaleString()}`} />
+            ) : null}
+            {analysis.depreciationPct != null ? (
+              <StatRow label="Lost since new" value={`~${analysis.depreciationPct}%`} />
+            ) : null}
+            {analysis.suggestedOffer ? (
+              <StatRow label="Suggested offer" value={`$${analysis.suggestedOffer.toLocaleString()}`} />
+            ) : null}
+            {analysis.negotiationAdvice ? (
+              <Text style={[styles.cardBody, { color: colors.textMuted }]}>{analysis.negotiationAdvice}</Text>
+            ) : null}
+          </Section>
+        ) : null}
+        {!history ? valueCurveSection : null}
 
         {/* The deal — ONLY when a verdict actually exists. Without a market
             value there is nothing to grade (the Value section already says
             so), and without an asking price there is nothing to say. */}
         {deal?.verdict ? (
-          <Section title="The deal" icon={Tag} alert={deal.verdict === 'high'}>
+          <Section title="The deal" icon={Tag} alert={deal.verdict === 'high'} premium>
             <View style={styles.dealPillRow}>
               <View style={[styles.dealPill, { backgroundColor: dealColor }]}>
                 <Text style={styles.dealPillText}>{dealVerdictLabel(deal.verdict)}</Text>
@@ -763,78 +981,31 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             <View style={styles.lockedHeader}>
               <Lock size={18} color={colors.premium} strokeWidth={2.5} />
               <Text style={[styles.lockedTitle, { color: colors.text }]}>
-                {analysis.modelScore.band === 'green'
+                {analysis.modelScore?.band === 'green'
                   ? 'Model checks out — now verify this exact car'
                   : 'Verify this exact car'}
               </Text>
             </View>
             <Text style={[styles.upsellText, { color: colors.textMuted }]}>
               This analysis hasn&apos;t seen this VIN&apos;s records. Unlock the Buy Score for this
-              exact car plus accident, title, theft, odometer, ownership, auction and service
-              records.
+              exact car, its market value with a suggested offer and negotiation advice, plus
+              accident, title, theft, odometer, ownership, auction and service records.
             </Text>
             <PrimaryButton
-              label={`Add Premium Report — +${formatUsd(PRICING.completeUpgrade)}`}
+              label={
+                upgradeWithCredit
+                  ? `${creditLabel(upgradeCreditCost)} — Premium Report`
+                  : `Add Premium Report — +${formatUsd(PRICING.completeUpgrade)}`
+              }
               onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
               style={{ marginTop: 12 }}
             />
           </View>
         ) : null}
 
-        {/* Value & pricing guidance — the heart of the Buyer's Analysis.
-            On a provider no-hit (older/rare vehicles) say so explicitly:
-            a silent absence reads as a bug to someone who paid. */}
-        {!analysis.estimatedValue && !analysis.suggestedOffer ? (
-          <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
-            Market value isn&apos;t available for this vehicle from our data sources — coverage is
-            thinner for older models. The scores and records above are unaffected.
-          </Text>
-        ) : (
-        <Section title="Value & pricing" icon={DollarSign}>
-          {analysis.estimatedValue ? (
-            <StatRow
-              label={
-                analysis.buyerMileage
-                  ? `Value at ${analysis.buyerMileage.toLocaleString()} mi`
-                  : 'Est. market value'
-              }
-              value={`$${analysis.estimatedValue.toLocaleString()}`}
-            />
-          ) : null}
-          {analysis.valueLow && analysis.valueHigh ? (
-            <StatRow
-              label="Estimated range"
-              value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
-            />
-          ) : null}
-          {/* The history report's own valuation — an independent second
-              anchor next to ours; strong negotiation ammo when they agree. */}
-          {analysis.carfaxValue ? (
-            <StatRow
-              label="History-based retail value"
-              value={`$${analysis.carfaxValue.amount.toLocaleString()}`}
-            />
-          ) : null}
-          {/* Real MSRP (carapi.app trims, ~2015–2020) — shown only when the
-              provider actually has it; hidden otherwise, never fabricated. */}
-          {analysis.msrp ? (
-            <StatRow label="Original MSRP" value={`$${analysis.msrp.toLocaleString()}`} />
-          ) : null}
-          {analysis.depreciationPct != null ? (
-            <StatRow label="Lost since new" value={`~${analysis.depreciationPct}%`} />
-          ) : null}
-          {analysis.suggestedOffer ? (
-            <StatRow label="Suggested offer" value={`$${analysis.suggestedOffer.toLocaleString()}`} />
-          ) : null}
-          {analysis.negotiationAdvice ? (
-            <Text style={[styles.cardBody, { color: colors.textMuted }]}>{analysis.negotiationAdvice}</Text>
-          ) : null}
-        </Section>
-        )}
-
-        {/* Recent asking prices for comparable cars — REAL market evidence, so
-            it sits right after the value estimate to corroborate it (and when
-            no estimate exists, it IS the pricing signal). Accumulating pool:
+        {/* Recent asking prices for comparable cars — REAL market evidence on
+            BOTH tiers (raw observed asking prices, not our valuation).
+            Accumulating pool:
             each point stamped with its seen date; older ones age out server-
             side at ~60 days. Vendor-neutral by design: the marketplace source
             is never named. Auctions and branded-title cars are filtered out
@@ -853,81 +1024,19 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               Asking prices, not sale prices — older listings may no longer be available.
             </Text>
             {analysis.listingComps.items.map((c, i) => (
-              <Pressable
+              <StatRow
                 key={`${i}-${c.price}`}
-                disabled={!c.url}
-                onPress={() => (c.url ? Linking.openURL(c.url) : undefined)}
-              >
-                <StatRow
-                  label={[
-                    c.mileage != null ? `${c.mileage.toLocaleString()} mi` : 'Mileage not listed',
-                    c.titleStatus ? `${c.titleStatus} title` : null,
-                    c.seenAt ? `seen ${shortDate(c.seenAt)}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  value={`$${c.price.toLocaleString()}`}
-                />
-              </Pressable>
+                label={[
+                  c.mileage != null ? `${c.mileage.toLocaleString()} mi` : 'Mileage not listed',
+                  c.titleStatus ? `${c.titleStatus} title` : null,
+                  c.seenAt ? `seen ${shortDate(c.seenAt)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                value={`$${c.price.toLocaleString()}`}
+              />
             ))}
           </Section>
-        ) : null}
-
-        {/* How mileage moves the price — negotiation ammo, no chart library.
-            This is a projection from the single market estimate, NOT observed
-            per-mile sale data, so it's labelled as an estimate up front. */}
-        {curve.length ? (
-          <CollapsibleSection
-            title="Value vs. mileage"
-            icon={TrendingDown}
-            summary="estimate"
-            defaultOpen={!history}
-          >
-            <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
-              Estimated — projected from the current market value to show how
-              mileage typically moves the price. Not per-mile sale data.
-            </Text>
-            {curve.map((p, i) => (
-              <View key={p.mileage} style={styles.curveRow}>
-                <Text
-                  style={[
-                    styles.curveLabel,
-                    { color: i === buyerIdx ? colors.text : colors.textMuted },
-                    i === buyerIdx && styles.curveBold,
-                  ]}
-                >
-                  {`${Math.round(p.mileage / 1000)}k mi`}
-                </Text>
-                <View style={[styles.curveTrack, { backgroundColor: colors.surfaceAlt }]}>
-                  <View
-                    style={[
-                      styles.curveBar,
-                      {
-                        width: `${valueBarWidthPct(curve, p.estimate)}%`,
-                        // Always visibly tinted; full brand blue marks the row
-                        // nearest the buyer's entered mileage.
-                        backgroundColor: i === buyerIdx ? colors.primary : `${colors.primary}55`,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.curveValue,
-                    { color: i === buyerIdx ? colors.text : colors.textMuted },
-                    i === buyerIdx && styles.curveBold,
-                  ]}
-                >
-                  {`$${p.estimate.toLocaleString()}`}
-                </Text>
-              </View>
-            ))}
-            {buyerIdx >= 0 ? (
-              <Text style={[styles.cardBody, { color: colors.textMuted }]}>
-                Highlighted row is closest to your entered odometer reading.
-              </Text>
-            ) : null}
-          </CollapsibleSection>
         ) : null}
 
         {analysis.maintenanceOutlook ? (
@@ -1059,14 +1168,30 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           <CollapsibleSection
             title="Fuel economy"
             icon={Fuel}
-            summary={`${analysis.fuelEconomy.combined_mpg} MPG combined`}
+            summary={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'} combined`}
             defaultOpen={!history}
           >
-            <StatRow label="Combined" value={`${analysis.fuelEconomy.combined_mpg} MPG`} />
+            <StatRow
+              label="Combined"
+              value={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'}`}
+            />
             {analysis.fuelEconomy.city_mpg && analysis.fuelEconomy.highway_mpg ? (
               <StatRow
                 label="City / Highway"
-                value={`${analysis.fuelEconomy.city_mpg} / ${analysis.fuelEconomy.highway_mpg} MPG`}
+                value={`${analysis.fuelEconomy.city_mpg} / ${analysis.fuelEconomy.highway_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'}`}
+              />
+            ) : null}
+            {/* EV/PHEV context — electric range + Level 2 charge time (EPA). */}
+            {analysis.fuelEconomy.electric_range ? (
+              <StatRow
+                label="Electric range"
+                value={`${analysis.fuelEconomy.electric_range} mi`}
+              />
+            ) : null}
+            {analysis.fuelEconomy.charge_time_240v ? (
+              <StatRow
+                label="Charge time (240V)"
+                value={`~${analysis.fuelEconomy.charge_time_240v} hr`}
               />
             ) : null}
             {/* Driver-reported average vs the sticker — only sent with 3+ drivers. */}

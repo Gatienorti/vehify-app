@@ -10,6 +10,7 @@ import VehicleMatchScreen from '../screens/VehicleMatchScreen';
 import BasicResultScreen from '../screens/BasicResultScreen';
 import PremiumUpsellScreen from '../screens/PremiumUpsellScreen';
 import PremiumReportScreen from '../screens/PremiumReportScreen';
+import CreditBadge from '../components/CreditBadge';
 import { track } from '../config/analytics';
 import type { RootStackParamList, TabParamList } from '../types/navigation';
 
@@ -50,9 +51,23 @@ export function RootNavigator() {
     >
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
       <Stack.Screen name="VehicleMatch" component={VehicleMatchScreen} options={{ title: 'Confirm vehicle' }} />
-      <Stack.Screen name="BasicResult" component={BasicResultScreen} options={{ title: 'Basic check' }} />
-      <Stack.Screen name="PremiumUpsell" component={PremiumUpsellScreen} options={{ title: 'Full report' }} />
-      <Stack.Screen name="PremiumReport" component={PremiumReportScreen} options={{ title: 'Vehicle history' }} />
+      {/* Credit chip in the nav bar — transparent so iOS's own glass pill is
+          the single container (no double-pill). Self-hides unless ever held. */}
+      <Stack.Screen
+        name="BasicResult"
+        component={BasicResultScreen}
+        options={{ title: 'Basic check', headerRight: () => <CreditBadge variant="header" /> }}
+      />
+      <Stack.Screen
+        name="PremiumUpsell"
+        component={PremiumUpsellScreen}
+        options={{ title: 'Full report', headerRight: () => <CreditBadge variant="header" /> }}
+      />
+      <Stack.Screen
+        name="PremiumReport"
+        component={PremiumReportScreen}
+        options={{ title: 'Vehicle history', headerRight: () => <CreditBadge variant="header" /> }}
+      />
     </Stack.Navigator>
   );
 }

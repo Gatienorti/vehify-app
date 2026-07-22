@@ -1,10 +1,4 @@
-import type {
-  PlatePurchaseConfirmResponse,
-  PlatePurchaseStartResponse,
-  PurchaseConfirmResponse,
-  ReportFetchResponse,
-  ReportResponse,
-} from '../api';
+import type { PurchaseConfirmResponse, ReportFetchResponse, ReportResponse } from '../api';
 import { isReportReady } from '../api';
 
 /**
@@ -152,58 +146,51 @@ const fullReport: ReportResponse = {
   },
 };
 
-// Tier-3 report: buyScore null, no history, and NO odometer timeline —
-// readings are history-class data with no real tier-3 source.
+// Buyer Report: buyScore null, no history, NO odometer timeline (readings
+// are history-class data), and — since the valuation move — VALUATION-FREE:
+// no market value, offer, negotiation, comps, curve, or deal. Those are
+// Premium content; old purchased reports may still carry them.
 const analysisOnlyReport: ReportResponse = {
   ...fullReport,
   tier: 'buyers_analysis',
   analysis: {
     ...fullReport.analysis,
     buyScore: null,
-    deal: { verdict: null, priceDelta: null, reason: 'Add the asking price for a verdict.' },
+    deal: null,
+    askingPrice: null,
+    estimatedValue: null,
+    valueLow: null,
+    valueHigh: null,
+    msrp: null,
+    depreciationPct: null,
+    suggestedOffer: null,
+    negotiationAdvice: null,
+    buyerMileage: null,
+    valueByMileage: [],
+    carfaxValue: null,
     mileageHistory: [],
     rollbackDetected: false,
   },
   history: null,
 };
 
-// Resolve-then-charge: a hit is revealed by confirm; a miss is surfaced by
-// START (no token, never charged) — so the miss fixture is a start response.
-const plateHit: PlatePurchaseConfirmResponse = {
-  purchaseId: 'pp_1',
-  found: true,
-  source: 'cache',
-  lastVerifiedAt: '2026-05-02T00:00:00Z',
-  isLiveVerified: false,
-  vehicle: { vin: '4T1B11HK5KU212345' },
-};
-
-const plateStartHit: PlatePurchaseStartResponse = { found: true, purchaseToken: 'pp_1' };
-const plateStartMiss: PlatePurchaseStartResponse = { found: false };
-
-// Async generation (queued confirm): confirm answers 'generating' instantly,
-// GET /report/{id} serves the small poll payload until the build lands.
+// Queued generation: confirm answers instantly with status=generating and
+// the app polls GET /report/{id} until the payload flips to the full report.
 const confirmGenerating: PurchaseConfirmResponse = {
   reportId: '42',
-  tier: 'buyers_analysis',
+  tier: 'complete_history',
   status: 'generating',
 };
 
 const pollPending: ReportFetchResponse = {
   id: '42',
   reportId: '42',
-  tier: 'buyers_analysis',
+  tier: 'complete_history',
   vin: '4T1B11HK5KU212345',
   status: 'generating',
 };
 
 describe('backend contract fixtures (v2.1)', () => {
-  it('narrows the plate purchase union on `found`', () => {
-    expect(plateHit.found && plateHit.vehicle.vin).toBe('4T1B11HK5KU212345');
-    expect(plateStartHit.found && plateStartHit.purchaseToken).toBe('pp_1');
-    expect(plateStartMiss.found).toBe(false);
-  });
-
   it('narrows the report poll union on status', () => {
     expect(confirmGenerating.status).toBe('generating');
     expect(isReportReady(pollPending)).toBe(false);
@@ -216,6 +203,12 @@ describe('backend contract fixtures (v2.1)', () => {
   it('keeps the honesty split: tier-3 has null buyScore, tier-4 a real one', () => {
     expect(analysisOnlyReport.analysis.buyScore).toBeNull();
     expect(analysisOnlyReport.history).toBeNull();
+    // Valuation move: a Buyer Report ships zero OWN-valuation content —
+    // but listing comps (raw observed asking prices) stay on both tiers.
+    expect(analysisOnlyReport.analysis.estimatedValue).toBeNull();
+    expect(analysisOnlyReport.analysis.suggestedOffer).toBeNull();
+    expect(analysisOnlyReport.analysis.deal).toBeNull();
+    expect(analysisOnlyReport.analysis.listingComps?.count).toBeGreaterThan(0);
     expect(fullReport.analysis.buyScore?.score).toBe(74);
     expect(fullReport.history?.accidents).toBe(2);
     expect(fullReport.history?.historyBasedValue?.amount).toBe(9680);

@@ -9,6 +9,7 @@ import {
   HelpCircle,
   Moon,
   RefreshCw,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../theme';
@@ -18,7 +19,9 @@ import { setThemePreference } from '../store/settingsSlice';
 import { useAccount } from '../hooks/useAccount';
 import { useLazyGetPurchasesQuery } from '../services/api';
 import AuthSheet, { type AuthMode } from '../components/AuthSheet';
+import DeleteAccountModal from '../components/DeleteAccountModal';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import CreditBadge from '../components/CreditBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import { TAB_BAR_CLEARANCE } from '../components/FloatingTabBar';
 import { track } from '../config/analytics';
@@ -37,15 +40,18 @@ if (GOOGLE_SIGN_IN_READY) {
 type Props = TabScreenProps<'Account'>;
 
 const PRIVACY_URL = 'https://vehify.app/privacy';
-// Placeholder support channel until a real contact form/page exists.
-const SUPPORT_EMAIL = 'gatien.orti@gmail.com';
-// Hidden until real IAP (RevenueCat) ships — spec §16 requires it at launch.
+const TERMS_URL = 'https://vehify.app/terms';
+const SUPPORT_EMAIL = 'support@vehify.app';
+// Restore is AUTOMATIC: ownership is server-backed (GET /purchases keyed by
+// device_id, and by account once signed in), so reports reappear on their own —
+// no manual button needed. Hidden. Flip to true only if a store ever needs an
+// explicit user-triggered restore (the handler + analytics stay wired for it).
 const SHOW_RESTORE_PURCHASES = false as boolean;
 
 function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress?: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={[styles.row, { borderColor: colors.border }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={!onPress} style={[styles.row, { borderColor: colors.border }]}>
       <Icon size={21} color={colors.textMuted} strokeWidth={2.25} />
       <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
       <ChevronRight size={19} color={colors.textMuted} strokeWidth={2.25} style={{ marginLeft: 'auto' }} />
@@ -56,7 +62,7 @@ function Row({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; 
 export default function AccountScreen(_props: Props) {
   const { colors, spacing, isDark } = useTheme();
   const dispatch = useAppDispatch();
-  const { user, isAuthenticated, signIn, signOut, busy } = useAccount();
+  const { user, isAuthenticated, signIn, signOut, deleteAccount, busy } = useAccount();
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const openAuth = (mode: AuthMode) => {
@@ -107,6 +113,12 @@ export default function AccountScreen(_props: Props) {
       });
     } catch (e) {
       if ((e as { code?: string }).code === statusCodes.SIGN_IN_CANCELLED) return;
+      if (__DEV__) {
+        // DEVELOPER_ERROR here = this build's signing-cert SHA-1 isn't on an
+        // Android OAuth client in Google Cloud (register debug AND release).
+        const err = e as { code?: string; message?: string };
+        console.log('[googleSignIn] failed:', err.code ?? '', err.message ?? String(e));
+      }
       Alert.alert('Sign-in didn’t complete', 'Please try again.');
     }
   };
@@ -118,6 +130,22 @@ export default function AccountScreen(_props: Props) {
     track('theme_changed', { mode: dark ? 'dark' : 'light' });
   };
   const [fetchPurchases, { isFetching: restoring }] = useLazyGetPurchasesQuery();
+
+  // Permanent deletion (App Store 5.1.1(v) / Play policy). Irreversible, so
+  // the modal makes it deliberate: the user must type DELETE to arm the
+  // button. Lookups + reports made on THIS phone stay available to it
+  // (device-owned); only the account and its identity link are erased.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const runDeleteAccount = async () => {
+    try {
+      await deleteAccount();
+      setDeleteOpen(false);
+      Alert.alert('Account deleted', 'Your account is gone and this phone is signed out. Your lookups and reports made on this phone are still here — you can keep using Vehify without an account.');
+    } catch {
+      setDeleteOpen(false);
+      Alert.alert('Couldn’t delete your account', 'We couldn’t reach the server just now — your account is unchanged. Please try again.');
+    }
+  };
 
   // Server-backed restore: pull the owner's paid reports (by account or device)
   // and re-seed the local entitlement cache, so owned-report shortcuts work
@@ -150,7 +178,10 @@ export default function AccountScreen(_props: Props) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: TAB_BAR_CLEARANCE, gap: spacing.lg }}>
-        <Text style={[styles.header, { color: colors.text }]}>Account</Text>
+        <View style={styles.headerRow}>
+          <Text style={[styles.header, { color: colors.text }]}>Account</Text>
+          <CreditBadge />
+        </View>
 
         {/* Optional account — only offered AFTER value is delivered (spec §15). */}
         {isAuthenticated && user ? (
@@ -168,6 +199,9 @@ export default function AccountScreen(_props: Props) {
               onPress={() => void signOut()}
               style={{ marginTop: spacing.md }}
             />
+            <Pressable accessibilityRole="button" accessibilityLabel="Delete account" onPress={() => setDeleteOpen(true)} disabled={busy} hitSlop={8} style={styles.deleteLinkWrap}>
+              <Text style={[styles.deleteLink, { color: colors.danger }]}>Delete account</Text>
+            </Pressable>
           </View>
         ) : (
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -181,6 +215,8 @@ export default function AccountScreen(_props: Props) {
                 size pair with the Google button's G. iOS-only. */}
             {Platform.OS === 'ios' ? (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Apple"
                 onPress={() => void appleSignIn()}
                 disabled={busy}
                 style={({ pressed }) => [
@@ -204,11 +240,11 @@ export default function AccountScreen(_props: Props) {
               style={{ marginTop: Platform.OS === 'ios' ? spacing.sm : spacing.md }}
             />
             <View style={styles.textLinkRow}>
-              <Pressable onPress={() => openAuth('login')} disabled={busy} hitSlop={8}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Log in" onPress={() => openAuth('login')} disabled={busy} hitSlop={8}>
                 <Text style={[styles.textLink, { color: colors.primary }]}>Log in</Text>
               </Pressable>
               <Text style={[styles.textLink, { color: colors.textMuted, marginHorizontal: 8 }]}>·</Text>
-              <Pressable onPress={() => openAuth('register')} disabled={busy} hitSlop={8}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Register" onPress={() => openAuth('register')} disabled={busy} hitSlop={8}>
                 <Text style={[styles.textLink, { color: colors.primary }]}>Register</Text>
               </Pressable>
             </View>
@@ -246,7 +282,14 @@ export default function AccountScreen(_props: Props) {
           />
           <Row
             icon={FileText}
-            label="Legal & privacy"
+            label="Terms of Use"
+            onPress={() => {
+              Linking.openURL(TERMS_URL).catch(() => {});
+            }}
+          />
+          <Row
+            icon={ShieldCheck}
+            label="Privacy Policy"
             onPress={() => {
               Linking.openURL(PRIVACY_URL).catch(() => {});
             }}
@@ -255,6 +298,12 @@ export default function AccountScreen(_props: Props) {
       </ScrollView>
 
       <AuthSheet visible={authOpen} initialMode={authMode} onClose={() => setAuthOpen(false)} />
+      <DeleteAccountModal
+        visible={deleteOpen}
+        busy={busy}
+        onConfirm={() => void runDeleteAccount()}
+        onClose={() => setDeleteOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -262,6 +311,7 @@ export default function AccountScreen(_props: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { fontSize: 32, fontWeight: '800' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   card: { borderWidth: 1, borderRadius: 16, padding: 16 },
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   cardBody: { fontSize: 14, lineHeight: 20 },
@@ -279,6 +329,8 @@ const styles = StyleSheet.create({
   appleLogo: { fontSize: 24, marginTop: -3 },
   appleLabel: { fontSize: 17, fontWeight: '600' },
   textLink: { fontSize: 15, fontWeight: '600' },
+  deleteLinkWrap: { alignSelf: 'center', paddingTop: 14, paddingBottom: 2 },
+  deleteLink: { fontSize: 14, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1 },
   rowLabel: { fontSize: 16 },
 });

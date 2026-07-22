@@ -3,7 +3,6 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -15,7 +14,6 @@ import { useTheme } from '../theme';
 import PrimaryButton from './PrimaryButton';
 import LoadingOverlay from './LoadingOverlay';
 import { US_STATES, normalizePlate } from '../utils/plate';
-import { PRICING, formatUsd } from '../config/pricing';
 import { PLATE_LOOKUP_MESSAGES } from '../config/loadingMessages';
 
 interface Props {
@@ -33,7 +31,8 @@ interface Props {
 
 /**
  * Confirmation sheet for a plate lookup: the read is editable (both plate and
- * state) before the user commits to the $0.25 charge.
+ * state) before the FREE lookup fires (plate→VIN costs nothing — live
+ * cache-miss resolves are quota-limited server-side).
  */
 export default function ScanConfirmSheet({
   visible,
@@ -83,9 +82,9 @@ export default function ScanConfirmSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       {/* Transparent backdrop (still tap-to-cancel): the scanner behind is
           showing the frozen detection shot — it must read clean, not dimmed. */}
-      <Pressable style={styles.backdrop} onPress={onCancel} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.backdrop} onPress={onCancel} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.avoider}
         pointerEvents="box-none"
       >
@@ -110,6 +109,8 @@ export default function ScanConfirmSheet({
         </View>
 
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Select state"
           onPress={() => !submitting && setStatePickerOpen(true)}
           style={[styles.stateSelect, { borderColor: colors.border, borderRadius: radius.md }]}
         >
@@ -124,16 +125,16 @@ export default function ScanConfirmSheet({
         ) : null}
 
         <Text style={[styles.costNote, { color: colors.textMuted, marginTop: spacing.md }]}>
-          Credited toward your Buyer&apos;s Analysis. VIN lookups are free and exact.
+          Plates can be transferred — you&apos;ll confirm the match before anything else.
         </Text>
 
         <PrimaryButton
-          label={`Search plate · ${formatUsd(PRICING.plateLookup)}`}
+          label="Search plate — free"
           loading={submitting}
           onPress={confirm}
           style={{ marginTop: spacing.md }}
         />
-        <Pressable onPress={onCancel} disabled={submitting} style={styles.cancelRow} hitSlop={8}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancel and keep scanning" onPress={onCancel} disabled={submitting} style={styles.cancelRow} hitSlop={8}>
           <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel &amp; keep scanning</Text>
         </Pressable>
       </View>
@@ -147,6 +148,8 @@ export default function ScanConfirmSheet({
             keyExtractor={(s) => s.code}
             renderItem={({ item }) => (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
                 onPress={() => { setState(item.code); setStatePickerOpen(false); setError(undefined); }}
                 style={[styles.stateRow, { borderColor: colors.border }]}
               >

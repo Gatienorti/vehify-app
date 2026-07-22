@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -16,15 +16,8 @@ import ManualEntrySheet from '../components/ManualEntrySheet';
 import ScanConfirmSheet from '../components/ScanConfirmSheet';
 import VinConfirmSheet from '../components/VinConfirmSheet';
 import ScannerFrame from '../components/ScannerFrame';
+import CreditBadge from '../components/CreditBadge';
 import { track } from '../config/analytics';
-import { PLATE_PRODUCT_ID } from '../config/pricing';
-import {
-  useConfirmPlatePurchaseMutation,
-  useGetPurchasesQuery,
-  useLookupVinMutation,
-  useStartPlatePurchaseMutation,
-} from '../services/api';
-import { useRecordLookup } from '../hooks/useRecordLookup';
 import { extractVinFromBarcode } from '../utils/vin';
 import { discardShot, readPlateOnce } from '../ml/plateProcessor';
 import { voteOnReads, isAcceptableVote } from '../ml/vote';
@@ -35,6 +28,8 @@ type Props = TabScreenProps<'Scan'>;
 
 const VIEWPORT_GRADIENT = ['#11203E', '#080D18'] as const;
 const VIN_BARCODES = ['code39', 'code128', 'datamatrix', 'pdf417', 'qr'] as const;
+// Torch button hidden for now — flip to true to bring the flash toggle back.
+const SHOW_TORCH = false as boolean;
 
 export default function ScanScreen({ navigation, route }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -43,8 +38,6 @@ export default function ScanScreen({ navigation, route }: Props) {
   // Pending confirmations (one or the other, never both)
   const [pendingPlate, setPendingPlate] = useState<{ plate: string; state: string | null } | null>(null);
   const [pendingVin, setPendingVin] = useState<string | null>(null);
-  // Network/server failure of the lookup itself, surfaced inside the sheet.
-  const [lookupError, setLookupError] = useState<string | null>(null);
 
   const readingRef = useRef(false);
   const camRef = useRef<CameraView>(null);
@@ -102,26 +95,6 @@ export default function ScanScreen({ navigation, route }: Props) {
   const [zoom, setZoom] = useState(0);
   // Torch (continuous light) for low-light plates.
   const [torch, setTorch] = useState(false);
-
-  const [lookupVin, vinState] = useLookupVinMutation();
-  const [startPlatePurchase, plateStartState] = useStartPlatePurchaseMutation();
-  const [confirmPlatePurchase, plateConfirmState] = useConfirmPlatePurchaseMutation();
-  const recordLookup = useRecordLookup();
-  // Owned reports, readable inside stable callbacks without re-creating them.
-  // Owned reports from the SERVER (source of truth) — never the local cache,
-  // which can point at a report the backend no longer has.
-  const { data: purchases } = useGetPurchasesQuery();
-  const purchasesRef = useRef(purchases);
-  useEffect(() => {
-    purchasesRef.current = purchases;
-  }, [purchases]);
-  const submitting =
-    vinState.isLoading || plateStartState.isLoading || plateConfirmState.isLoading;
-  // A confirm-phase failure keeps the started purchase token so retrying the
-  // same plate re-runs ONLY the confirm — never minting a second $0.25 charge.
-  const plateTokenRef = useRef<{ key: string; token: string } | null>(null);
-  const submittingRef = useRef(false);
-  useEffect(() => { submittingRef.current = submitting; }, [submitting]);
 
   const [permission, requestPermission] = useCameraPermissions();
   const isFocused = useIsFocused();
@@ -208,7 +181,9 @@ export default function ScanScreen({ navigation, route }: Props) {
             pageX: fpx, pageY: fpy, width: fw, height: fh,
             previewX: ppx, previewY: ppy, previewWidth: pw, previewHeight: ph,
           };
-          console.log('[ScanScreen] frame measured:', JSON.stringify(frameMeasureRef.current));
+          if (__DEV__) {
+            console.log('[ScanScreen] frame measured:', JSON.stringify(frameMeasureRef.current));
+          }
         });
       });
     }, 300);
@@ -224,7 +199,7 @@ export default function ScanScreen({ navigation, route }: Props) {
     if (!cameraActive) return;
     clearReads();
     const id = setInterval(async () => {
-      if (readingRef.current || submittingRef.current || handledRef.current) return;
+      if (readingRef.current || handledRef.current) return;
       if (!camRef.current) return;
       readingRef.current = true;
       try {
@@ -268,7 +243,7 @@ export default function ScanScreen({ navigation, route }: Props) {
           clearReads();
         }
       } catch (e) {
-        console.error('[ScanScreen] read error:', e);
+        if (__DEV__) console.error('[ScanScreen] read error:', e);
       } finally {
         readingRef.current = false;
       }
@@ -279,100 +254,35 @@ export default function ScanScreen({ navigation, route }: Props) {
   const resetPending = () => {
     setPendingPlate(null);
     setPendingVin(null);
-    setLookupError(null);
     unfreezeShot();
     clearReads();
     handledRef.current = false;
   };
 
+  // Navigate FIRST, load THERE. The destination screen owns the network call
+  // and its loading state, so the confirm sheet never collapses into a dead
+  // beat between the sheet closing and the next screen appearing.
   const doVinLookup = useCallback(
-    async (vin: string) => {
-      setLookupError(null);
-      try {
-        const res = await lookupVin({ vin }).unwrap();
-        recordLookup(res.vehicle, { lookupType: 'vin' });
-        setSheetOpen(false);
-        setPendingVin(null);
-        unfreezeShot();
-        // Already-owned report → straight to it; the basic page would only
-        // offer "View your report" anyway.
-        const owned = purchasesRef.current?.find((p) => p.vin === res.vehicle.vin && p.reportId);
-        if (owned) {
-          navigation.navigate('PremiumReport', {
-            vin: res.vehicle.vin,
-            reportId: owned.reportId,
-            tier: owned.tier,
-          });
-        } else {
-          navigation.navigate('BasicResult', { vin: res.vehicle.vin });
-        }
-      } catch {
-        setLookupError("Couldn't reach the server. Check your connection and try again.");
-      }
+    (vin: string) => {
+      setSheetOpen(false);
+      setPendingVin(null);
+      unfreezeShot();
+      navigation.navigate('BasicResult', { vin, lookup: true });
     },
-    [lookupVin, recordLookup, navigation, unfreezeShot],
+    [navigation, unfreezeShot],
   );
 
-  // Paid $0.25 plate lookup (tier 2), RESOLVE-THEN-CHARGE: start() resolves the
-  // plate first and only returns a token on a hit. A no-hit is surfaced here
-  // WITHOUT ever charging (no store purchase is triggered). On a hit we run the
-  // purchase (mock IAP until RevenueCat ships), then confirm to reveal the VIN.
-  // Fires ONLY from the confirm sheet's explicit button, never from camera frames.
-  const doPlatePurchase = useCallback(
-    async (plate: string, state: string) => {
-      track('plate_purchase_started', { state });
-      setLookupError(null);
-      const attemptKey = `${plate}|${state}`;
-      try {
-        let token = plateTokenRef.current?.key === attemptKey ? plateTokenRef.current.token : null;
-        if (!token) {
-          const start = await startPlatePurchase({
-            plate,
-            state,
-            productId: PLATE_PRODUCT_ID,
-          }).unwrap();
-
-          // No match → the user is NOT charged. Steer to free VIN entry.
-          if (!start.found) {
-            plateTokenRef.current = null;
-            setSheetOpen(false);
-            setPendingPlate(null);
-            unfreezeShot();
-            track('plate_purchase_no_hit', { state });
-            Alert.alert(
-              'No vehicle found for this plate',
-              'We searched but no match came back — so there’s no charge. Enter the VIN instead; VIN lookups are free and exact.',
-              [
-                { text: 'Enter VIN', onPress: () => setSheetOpen(true) },
-                { text: 'Back', style: 'cancel' },
-              ],
-            );
-            return;
-          }
-
-          token = start.purchaseToken;
-          plateTokenRef.current = { key: attemptKey, token };
-        }
-
-        // TODO(RevenueCat): trigger the $0.25 store purchase here before
-        // confirming. Mocked until RevenueCat lands.
-        const res = await confirmPlatePurchase({
-          purchaseToken: token,
-          platform: 'ios',
-          appStoreTransactionId: `mock-txn-plate-${token}`,
-        }).unwrap();
-        plateTokenRef.current = null;
-        setSheetOpen(false);
-        setPendingPlate(null);
-        unfreezeShot();
-        track('plate_purchase_completed', { state, source: res.source });
-        navigation.navigate('VehicleMatch', { result: res, plate, state });
-      } catch {
-        track('plate_purchase_failed', { state });
-        setLookupError("The lookup didn't go through. Check your connection and try again.");
-      }
+  // FREE plate→VIN lookup (funnel opener — the paid reports carry the
+  // economics). VehicleMatch runs the actual lookup on arrival; it fires ONLY
+  // from the confirm sheet's explicit button, never from camera frames.
+  const doPlateLookup = useCallback(
+    (plate: string, state: string) => {
+      setSheetOpen(false);
+      setPendingPlate(null);
+      unfreezeShot();
+      navigation.navigate('VehicleMatch', { plate, state });
     },
-    [startPlatePurchase, confirmPlatePurchase, navigation, unfreezeShot],
+    [navigation, unfreezeShot],
   );
 
   // Manual plate entry → same editable confirm sheet
@@ -539,8 +449,18 @@ export default function ScanScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
-        {previewActive ? (
+        {/* Credit chip — top-right, always visible (0 shows in red). */}
+        <View style={styles.topRight} pointerEvents="box-none">
+          <CreditBadge variant="overlay" />
+        </View>
+
+        {/* Torch — bottom-right, within thumb reach just above the scan
+            controls (out of the way of the top-right credit chip).
+            Hidden for now (SHOW_TORCH) — flip back on when wanted. */}
+        {SHOW_TORCH && previewActive ? (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={torch ? 'Turn off flashlight' : 'Turn on flashlight'}
             onPress={() => { setTorch((t) => !t); track('scan_torch_toggled', { on: !torch }); }}
             style={[styles.torchBtn, torch && styles.torchBtnActive]}
             hitSlop={10}
@@ -551,13 +471,13 @@ export default function ScanScreen({ navigation, route }: Props) {
 
         <View style={styles.actions}>
           {scanning ? (
-            <Pressable onPress={stopScanning} style={styles.stopBtn} hitSlop={8}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Stop scanning" onPress={stopScanning} style={styles.stopBtn} hitSlop={8}>
               <Text style={styles.stopBtnText}>Stop scanning</Text>
             </Pressable>
           ) : (
             <PrimaryButton label="Start scanning" onPress={startScanning} />
           )}
-          <Pressable onPress={() => { track('manual_entry_opened'); setSheetOpen(true); }} style={styles.typeRow} hitSlop={8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Type plate or VIN manually" onPress={() => { track('manual_entry_opened'); setSheetOpen(true); }} style={styles.typeRow} hitSlop={8}>
             <Keyboard size={18} color="#AEB8CC" strokeWidth={2.25} />
             <Text style={styles.typeText}>Can&apos;t scan? Type instead</Text>
           </Pressable>
@@ -575,31 +495,26 @@ export default function ScanScreen({ navigation, route }: Props) {
           setSheetOpen(false);
         }}
         onSubmitPlate={onSubmitPlate}
-        submitting={submitting}
       />
 
       <ScanConfirmSheet
         visible={pendingPlate !== null && pendingVin === null}
         initialPlate={pendingPlate?.plate ?? ''}
         initialState={pendingPlate?.state ?? null}
-        submitting={submitting}
-        serverError={lookupError}
         onCancel={resetPending}
         onConfirm={(plate, state) => {
           track('scan_confirmed');
-          void doPlatePurchase(plate, state);
+          doPlateLookup(plate, state);
         }}
       />
 
       <VinConfirmSheet
         visible={pendingVin !== null}
         initialVin={pendingVin ?? ''}
-        submitting={submitting}
-        serverError={lookupError}
         onCancel={resetPending}
         onConfirm={(vin) => {
           track('scan_confirmed');
-          void doVinLookup(vin);
+          doVinLookup(vin);
         }}
       />
     </View>
@@ -659,10 +574,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  torchBtn: {
+  // Credit chip, top-right corner — aligned to roughly the same height as the
+  // title-row chip on History/Account.
+  topRight: {
     position: 'absolute',
-    top: 60,
+    top: 76,
     right: 20,
+    alignItems: 'flex-end',
+  },
+  torchBtn: {
+    // Bottom-right, just above the scan controls — thumb-reachable and clear
+    // of the top-right credit chip.
+    position: 'absolute',
+    right: 24,
+    bottom: 194,
     width: 44,
     height: 44,
     borderRadius: 22,

@@ -1,4 +1,4 @@
-# Vehify Mobile ↔ Backend Contract (Report Tiers v2.1)
+# Vehify Mobile ↔ Backend Contract (Report Tiers v3)
 
 > The single explainer for how the app talks to the backend (`../vehify-web`, live at `https://vehify.app`).
 > Types in `src/types/api.ts` + `src/types/vehicle.ts` mirror these shapes exactly. All responses are
@@ -7,30 +7,33 @@
 ## The product in one picture
 
 ```
-scan plate ──► $0.25 plate purchase ──► vehicle identity        (tier 2)
+scan plate ──► FREE plate→VIN (quota on live resolves) ──► identity
    or                                        │
-type VIN  ──► FREE identity lookup ──────────┤                  (tier 1)
+type VIN  ──► FREE identity lookup ──────────┤         (always unlimited)
                                              ▼
-                              $1.99 BUYER REPORT            (tier 3)
+                              $1.99 BUYER REPORT
                               "should I buy this MODEL, and
                                is the price fair?"
-                              (plate fee credited → $1.74)
                                              │
                                              ▼
-                              +$3.00 PREMIUM REPORT   (tier 4)
+                              +$3.00 PREMIUM REPORT
                               "what happened to THIS car?"
                               (upgrade-only — needs an owned analysis)
 ```
 
 **All charging happens in-app via RevenueCat.** The backend records prices for bookkeeping and
-computes eligibility (plate credit, upgrade); the store products are:
+computes upgrade eligibility; the store products are:
 
 | RevenueCat product id | Price | What |
 |---|---|---|
-| *(plate product)* | $0.25 | Plate lookup |
 | `buyers_analysis` | $1.99 | Buyer Report |
-| *(credited variant, if configured)* | $1.74 | Buyer Report with plate credit |
 | `complete_history_upgrade` | $3.00 | Premium Report upgrade |
+
+**Plate→VIN is free.** Cache hits are unlimited; only LIVE cache-miss resolves count against a
+personal quota: anonymous device **5/hour + 15/day**, signed-in **15/hour + 30/day** (account-wide).
+Confirming any paid report **resets** the buyer's counters. Over quota → **429** — the app shows the
+sign-in upsell (anonymous) or the "frees up within the hour" note (signed-in); VIN entry is always
+the unlimited escape hatch.
 
 ## The honesty rule (why there are two scores)
 
@@ -59,23 +62,17 @@ buyers own their purchases/history; after sign-in (`Authorization: Bearer <sanct
 |---|---|
 | `POST /lookup/vin` `{vin}` | → `BasicReport` = `{vehicle, summary, estimatedValue: null}`. **Identity only** — no recalls/safety/fuel here (paid-tier data). |
 | `GET /vehicle/{vin}/basic` | Same slim shape from cache. |
-| `POST /lookup/plate` `{plate, state}` | Cache-first plate→VIN → `{source, lastVerifiedAt, isLiveVerified, vehicle}`. 404 = no-hit → steer to VIN entry. *(Kept for the free-refresh path; the paid flow below is the product.)* |
-| `POST /lookup/plate/refresh` `{plate, state, reason}` | Force a live re-lookup for a rejected/stale match. |
+| `POST /lookup/plate` `{plate, state}` | FREE cache-first plate→VIN → `{source, lastVerifiedAt, isLiveVerified, vehicle}`. Cache hits unlimited; a cache miss live-resolves against the personal quota. **429** = quota spent (show sign-in upsell / VIN steer). 404 = genuine no-hit → steer to VIN entry. |
+| `POST /lookup/plate/refresh` `{plate, state, reason}` | Live re-resolve for a rejected match — only when the mapping is 30+ days old (else serves cache); draws from the same quota (429 possible). |
 
-### Plate purchase (tier 2, $0.25)
+### Report purchase
 | Endpoint | Notes |
 |---|---|
-| `POST /plate/purchase/start` `{plate, state, productId}` | → `{purchaseToken}` (201). |
-| `POST /plate/purchase/confirm` `{purchaseToken, platform, appStoreTransactionId}` | Marks paid, **runs the plate→VIN lookup inline** → `{purchaseId, found, source?, vehicle?}`. `found: false` = no-hit (paid record kept; steer to VIN). The fee becomes a credit toward the analysis **for that VIN**, consumed by the report that uses it. |
-
-### Report purchase (tiers 3–4)
-| Endpoint | Notes |
-|---|---|
-| `POST /report/purchase/start` `{vin, tier, productId, mileage?, askingPrice?}` | → `{purchaseToken}` (201). `tier`: `buyers_analysis` (default) or `complete_history`. **Ask the buyer for `mileage` (odometer) and `askingPrice` — they're standing at the car**; these personalize the valuation, power the deal verdict, the value-vs-mileage curve, and the rollback cross-check. Price already reflects the plate credit ($1.74). `complete_history` without an owned paid analysis for that VIN → **422** (it's upgrade-only). |
-| `POST /report/purchase/confirm` `{purchaseToken, tier, platform, appStoreTransactionId}` | Marks paid and **queues** the content build → `{reportId, tier, status}` instantly (`status`: `generating`\|`ready`\|`failed`). Poll `GET /report/{id}` until `ready`. Safe to re-fire (idempotent, never re-charges). |
+| `POST /report/purchase/start` `{vin, tier, productId, mileage?, askingPrice?}` | → `{purchaseToken}` (201). `tier`: `buyers_analysis` (default) or `complete_history`. **Ask the buyer for `mileage` (odometer) and `askingPrice` — they're standing at the car**; these personalize the valuation, power the deal verdict, the value-vs-mileage curve, and the rollback cross-check. `complete_history` without an owned paid analysis for that VIN → **422** (it's upgrade-only). |
+| `POST /report/purchase/confirm` `{purchaseToken, tier, platform, appStoreTransactionId}` | Verifies the purchase **with RevenueCat** (server-side, fail-closed) — an unverifiable transaction → **402** and nothing is granted (retry after a moment; the purchase isn't lost). On success: marks paid and **queues** the content build → `{reportId, tier, status}` instantly (`status`: `generating`\|`ready`\|`failed`). Poll `GET /report/{id}` until `ready`. Safe to re-fire (idempotent, never re-charges). |
 | `GET /report/{id}` | While the queued build runs → `{id, reportId, tier, vin, status: 'generating'\|'failed'}` (poll at ~2.5s). Once built → full `ReportResponse` (below) with `status: 'ready'`. Ownership-gated. |
 | `POST /report/{id}/retry` | **FREE** recovery when `status: 'failed'` — re-queues the already-paid build → `{reportId, id, tier, vin, status: 'generating'}`. 422 when there's nothing to retry (content exists / never paid). |
-| `POST /report/{id}/refresh` | Regenerate with current data (stale-report banner). Clears the content and re-queues → the same generating payload; poll like after a purchase. |
+| `POST /report/{id}/refresh` `{transactionId}` | Regenerate with current data (stale-report banner), paid via the `report_refresh` consumable — send the store transaction id; it's verified with RevenueCat and consumed exactly once (replay → **422**, unverifiable → **402**). Clears the content and re-queues → the same generating payload; poll like after a purchase. |
 
 ### Account
 | Endpoint | Notes |
@@ -133,7 +130,8 @@ buyers own their purchases/history; after sign-in (`Authorization: Bearer <sanct
 ## Gotchas
 
 - `tier` + `productId` are **required** on report start/confirm; invalid values → 422.
-- The plate credit only matches **the VIN the plate resolved to**, and is consumed exactly once.
+- Quota 429s only ever fire on LIVE plate resolves — a repeated scan of any already-seen plate
+  (hit or remembered no-hit) always answers, even at zero quota.
 - `estimatedValue` on the free `BasicReport` is a transitional always-null key — ignore it.
 - Report ids are sequential but unguessable in practice: fetching without the right
   `X-Device-Id`/token 404s (never 403) so existence can't be probed.

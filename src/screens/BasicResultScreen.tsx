@@ -1,16 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CircleCheckBig } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import VehicleCard from '../components/VehicleCard';
 import PrimaryButton from '../components/PrimaryButton';
-import BuyAnalysisSheet from '../components/BuyAnalysisSheet';
+import LoadingOverlay from '../components/LoadingOverlay';
+import { BUILDING_REPORT_MESSAGES, VIN_DECODE_MESSAGES } from '../config/loadingMessages';
 import { track } from '../config/analytics';
-import { useGetPurchasesQuery, useGetVehicleBasicQuery } from '../services/api';
-import { useAppSelector } from '../store/hooks';
-import { usePurchaseReport } from '../hooks/usePurchaseReport';
-import { PRICING, buyersAnalysisPrice, formatUsd } from '../config/pricing';
+import { useGetPurchasesQuery, useGetVehicleBasicQuery, useLookupVinMutation } from '../services/api';
+import { useRecordLookup } from '../hooks/useRecordLookup';
+import { useCredits } from '../hooks/useCredits';
+import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
+import { PRICING, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
 import type { StackScreenProps } from '../types/navigation';
 
 type Props = StackScreenProps<'BasicResult'>;
@@ -28,28 +30,68 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 /** Free basic result (spec §11). */
 export default function BasicResultScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
-  const { vin } = route.params;
-  const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin);
-  const historyEntry = useAppSelector((s) => s.history.entries.find((e) => e.vin === vin));
+  const { vin, lookup } = route.params;
+  // Fresh from scan/manual entry (`lookup`): decode the VIN HERE — the scan
+  // flow navigates immediately so the loading state lives on this screen
+  // instead of a sheet that collapses mid-transition. `decoded` gates the
+  // basic query: /vehicle/:vin/basic serves what the decode just cached.
+  const [lookupVin] = useLookupVinMutation();
+  const recordLookup = useRecordLookup();
+  const [decoded, setDecoded] = useState(!lookup);
+  const [decodeFailed, setDecodeFailed] = useState(false);
+  const runDecode = useCallback(async () => {
+    setDecodeFailed(false);
+    try {
+      const res = await lookupVin({ vin }).unwrap();
+      recordLookup(res.vehicle, { lookupType: 'vin' });
+      setDecoded(true);
+    } catch {
+      setDecodeFailed(true);
+    }
+  }, [lookupVin, recordLookup, vin]);
+  const decodeStartedRef = useRef(false);
+  useEffect(() => {
+    if (!lookup || decodeStartedRef.current) return;
+    decodeStartedRef.current = true;
+    void runDecode();
+  }, [lookup, runDecode]);
+
+  const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin, { skip: !decoded });
   // Ownership comes from the SERVER (device_id / user_id), never a local cache
   // that can claim a report the backend no longer has.
   const { data: purchases } = useGetPurchasesQuery();
   const purchase = purchases?.find((r) => r.vin === vin && r.reportId);
-  // The plate fee is credited toward Buyer's Analysis — earned when this
-  // vehicle was reached via a (paid) plate lookup (Report Tiers v2, tier 2).
-  const hasPlateCredit = historyEntry?.lookupType === 'plate';
-  const [buySheetOpen, setBuySheetOpen] = useState(false);
-  const { buy, buying } = usePurchaseReport();
+  const { buy, redeem, buying } = usePurchaseReport();
+  // Credits-first: if the buyer holds enough credits, spend them instead of an
+  // in-app purchase. Not enough (incl. zero) → the $ path, with no credit
+  // mention at all (App Store rules + keeps the funnel clean).
+  const { balance } = useCredits();
+  const buyerCreditCost = creditCostFor('buyers_analysis');
+  const useCredit = balance >= buyerCreditCost;
+
+  // Fresh from scan + report already owned → straight to it; this page would
+  // only offer "View your report" anyway. (Only on the `lookup` arrival —
+  // a deliberate visit to Basic from elsewhere stays put.)
+  const ownedReportId = lookup && purchase ? purchase.reportId : null;
+  const ownedTier = purchase?.tier;
+  useEffect(() => {
+    if (!decoded || !ownedReportId || !ownedTier) return;
+    navigation.replace('PremiumReport', { vin, reportId: ownedReportId, tier: ownedTier });
+  }, [decoded, ownedReportId, ownedTier, navigation, vin]);
 
   useEffect(() => {
     track('basic_report_viewed', { vin });
   }, [vin]);
 
-  // Purchase runs right here (sheet stays up with the building overlay);
-  // success rebuilds the stack as Tabs → Report so back lands on Scan.
-  const buyAnalysis = async (mileage: number | undefined, askingPrice: number | undefined, zip?: string) => {
+  // Purchase runs right here — one tap, no input sheet (the odometer/asking
+  // price fields died with the valuation move: the Buyer Report is
+  // valuation-free, and Premium prices from the history odometer). Success
+  // rebuilds the stack as Tabs → Report so back lands on Scan.
+  const buyAnalysis = async () => {
     try {
-      const confirm = await buy(vin, 'buyers_analysis', { mileage, askingPrice, zip, hasPlateCredit });
+      const confirm = useCredit
+        ? await redeem(vin, 'buyers_analysis')
+        : await buy(vin, 'buyers_analysis');
       navigation.reset({
         index: 1,
         routes: [
@@ -57,26 +99,43 @@ export default function BasicResultScreen({ navigation, route }: Props) {
           { name: 'PremiumReport', params: { vin, reportId: confirm.reportId, tier: confirm.tier } },
         ],
       });
-    } catch {
+    } catch (e) {
+      if (e instanceof PurchaseCancelledError) return; // closed the sheet — silence
       Alert.alert(
-        'Purchase didn’t complete',
-        'You haven’t been charged. Check your connection and try again.',
+        useCredit ? 'Couldn’t use your credit' : 'Purchase didn’t complete',
+        useCredit
+          ? 'Your credit wasn’t spent. Check your connection and try again.'
+          : 'You haven’t been charged twice — a paid purchase is resumed on retry.',
         [
-          { text: 'Try again', onPress: () => void buyAnalysis(mileage, askingPrice, zip) },
+          { text: 'Try again', onPress: () => void buyAnalysis() },
           { text: 'Not now', style: 'cancel' },
         ],
       );
     }
   };
 
-  if (isError) {
+  if (isError || decodeFailed) {
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
         <Text style={[styles.errorTitle, { color: colors.text }]}>Couldn&apos;t load this vehicle</Text>
         <Text style={[styles.errorBody, { color: colors.textMuted }]}>
           Check your connection and try again.
         </Text>
-        <PrimaryButton label="Try again" onPress={() => void refetch()} style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }} />
+        <PrimaryButton
+          label="Try again"
+          onPress={() => (decodeFailed ? void runDecode() : void refetch())}
+          style={{ marginTop: 16, alignSelf: 'stretch', marginHorizontal: 24 }}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (!decoded) {
+    // Decoding a freshly scanned/typed VIN — same overlay the confirm sheet
+    // used, so the transition reads as one continuous loading state.
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <LoadingOverlay visible title="Decoding this VIN…" messages={VIN_DECODE_MESSAGES} dim={false} />
       </SafeAreaView>
     );
   }
@@ -84,7 +143,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   if (isLoading || !data) {
     return (
       <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -137,9 +196,10 @@ export default function BasicResultScreen({ navigation, route }: Props) {
           />
         ) : (
           /* Upsell to Buyer's Analysis — the funnel's money moment, sold as a
-             proper offer card, not a gray paragraph. v2.1 honesty: Model Score
-             + deal verdict; the per-VIN Buy Score is the Complete History
-             promise, never implied here. */
+             proper offer card, not a gray paragraph. Honesty: the Buyer
+             Report judges the MODEL (score, recalls, safety, upkeep);
+             valuation and the per-VIN Buy Score are the Premium promise,
+             never implied here. */
           <View
             style={[
               styles.upsell,
@@ -156,9 +216,9 @@ export default function BasicResultScreen({ navigation, route }: Props) {
             {(
               [
                 { label: 'Model Score — real complaints, recalls & federal investigations' },
-                { label: 'Market value & suggested offer', starred: true },
-                { label: 'A verdict on the asking price', starred: true },
-                { label: 'Negotiation advice & maintenance outlook' },
+                { label: 'Crash ratings, fuel costs & open recalls', starred: true },
+                { label: 'Recent comparable listings', starred: true },
+                { label: 'Maintenance outlook & plain-English recommendation' },
               ] as { label: string; starred?: boolean }[]
             ).map((line) => (
               <View key={line.label} style={styles.featureRow}>
@@ -172,16 +232,15 @@ export default function BasicResultScreen({ navigation, route }: Props) {
             <Text style={[styles.hedge, { color: colors.textMuted }]}>
               *When available for your vehicle — data coverage varies by age and model.
             </Text>
-            {hasPlateCredit ? (
-              <Text style={[styles.creditNote, { color: colors.success }]}>
-                Your {formatUsd(PRICING.plateCredit)} plate credit is applied.
-              </Text>
-            ) : null}
             <PrimaryButton
-              label={`Get Buyer Report — ${formatUsd(buyersAnalysisPrice(hasPlateCredit))}`}
+              label={
+                useCredit
+                  ? `${creditLabel(buyerCreditCost)} — Buyer Report`
+                  : `Get Buyer Report — ${formatUsd(PRICING.buyersAnalysis)}`
+              }
               onPress={() => {
                 track('premium_cta_viewed', { vin, tier: 'buyers_analysis' });
-                setBuySheetOpen(true);
+                void buyAnalysis();
               }}
               style={{ marginTop: 6 }}
             />
@@ -189,15 +248,9 @@ export default function BasicResultScreen({ navigation, route }: Props) {
         )}
       </ScrollView>
 
-      <BuyAnalysisSheet
-        visible={buySheetOpen}
-        price={buyersAnalysisPrice(hasPlateCredit)}
-        submitting={buying}
-        // EV/plug-in: the sheet adds a ZIP field (charging density on the report).
-        isElectric={/electric|plug-in/i.test(data.vehicle.fuelType ?? '')}
-        onCancel={() => !buying && setBuySheetOpen(false)}
-        onBuy={(mileage, askingPrice, zip) => void buyAnalysis(mileage, askingPrice, zip)}
-      />
+      {/* Credit redeems have no store sheet — show progress while the
+          backend builds; store purchases surface RevenueCat's own UI. */}
+      <LoadingOverlay visible={buying} title="Building your analysis…" messages={BUILDING_REPORT_MESSAGES} />
     </SafeAreaView>
   );
 }
@@ -215,7 +268,6 @@ const styles = StyleSheet.create({
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   featureText: { fontSize: 14.5, lineHeight: 20, flex: 1 },
   hedge: { fontSize: 12, fontWeight: '500' },
-  creditNote: { fontSize: 13, fontWeight: '700' },
   errorTitle: { fontSize: 18, fontWeight: '700' },
   errorBody: { fontSize: 14, marginTop: 6 },
 });

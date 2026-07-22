@@ -7,6 +7,7 @@ import type { HistoryEntry } from '../types/history';
 import type {
   AuthResponse,
   BasicVehicleResponse,
+  CreditsResponse,
   EmailLoginRequest,
   EmailRegisterRequest,
   ForgotPasswordRequest,
@@ -19,15 +20,12 @@ import type {
   PurchaseFeedItem,
   PlateLookupRequest,
   PlateLookupResponse,
-  PlatePurchaseConfirmRequest,
-  PlatePurchaseConfirmResponse,
-  PlatePurchaseStartRequest,
-  PlatePurchaseStartResponse,
   PlateRefreshRequest,
   PurchaseConfirmRequest,
   PurchaseConfirmResponse,
   PurchaseStartRequest,
   PurchaseStartResponse,
+  RedeemReportRequest,
   ReportFetchResponse,
   ReportRequeuedResponse,
   SocialSignInRequest,
@@ -57,7 +55,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['VehicleBasic', 'Report', 'History', 'Purchases'],
+  tagTypes: ['VehicleBasic', 'Report', 'History', 'Purchases', 'Credits'],
   endpoints: (builder) => ({
     lookupVin: builder.mutation<VinLookupResponse, VinLookupRequest>({
       query: (body) => ({ url: '/lookup/vin', method: 'POST', body }),
@@ -72,18 +70,6 @@ export const api = createApi({
 
     refreshPlate: builder.mutation<PlateLookupResponse, PlateRefreshRequest>({
       query: (body) => ({ url: '/lookup/plate/refresh', method: 'POST', body }),
-    }),
-
-    // Paid $0.25 plate lookup (tier 2). Two-phase mock IAP like reports;
-    // confirm runs the plate→VIN lookup inline and returns the match (or
-    // found:false on a no-hit — the paid record is kept server-side).
-    startPlatePurchase: builder.mutation<PlatePurchaseStartResponse, PlatePurchaseStartRequest>({
-      query: (body) => ({ url: '/plate/purchase/start', method: 'POST', body }),
-    }),
-
-    confirmPlatePurchase: builder.mutation<PlatePurchaseConfirmResponse, PlatePurchaseConfirmRequest>({
-      query: (body) => ({ url: '/plate/purchase/confirm', method: 'POST', body }),
-      invalidatesTags: ['History'],
     }),
 
     getVehicleBasic: builder.query<BasicVehicleResponse, string>({
@@ -102,6 +88,22 @@ export const api = createApi({
       invalidatesTags: ['Report', 'History', 'Purchases'],
     }),
 
+    // Report credits balance (bought on the website, spent in-app). If the
+    // backend doesn't serve this yet it errors → the app reads balance as 0
+    // and behaves exactly as it does without credits (IAP only).
+    getCredits: builder.query<CreditsResponse, void>({
+      query: () => '/credits',
+      providesTags: ['Credits'],
+    }),
+
+    // Unlock a report by spending credits instead of an in-app purchase. The
+    // backend checks the balance + decrements + queues generation, returning
+    // the same shape as a paid confirm (so the caller's flow is identical).
+    redeemReport: builder.mutation<PurchaseConfirmResponse, RedeemReportRequest>({
+      query: (body) => ({ url: '/report/redeem', method: 'POST', body }),
+      invalidatesTags: ['Report', 'History', 'Purchases', 'Credits'],
+    }),
+
     // While the backend's queued build runs, this returns the small
     // {status: 'generating'} payload — poll it (pollingInterval at the call
     // site) until it flips to the full ready report.
@@ -111,10 +113,15 @@ export const api = createApi({
     }),
 
     // Regenerate a stale report's content (offered via the "X days old"
-    // banner). Free while providers are mock/free. Queued: the response is
-    // the generating payload and the report polls back to ready.
-    refreshReport: builder.mutation<ReportRequeuedResponse, { id: string }>({
-      query: (arg) => ({ url: `/report/${arg.id}/refresh`, method: 'POST' }),
+    // banner). Paid via the report_refresh consumable — the store transaction
+    // id is verified server-side and consumed exactly once. Queued: the
+    // response is the generating payload and the report polls back to ready.
+    refreshReport: builder.mutation<ReportRequeuedResponse, { id: string; transactionId?: string }>({
+      query: ({ id, transactionId }) => ({
+        url: `/report/${id}/refresh`,
+        method: 'POST',
+        body: transactionId ? { transactionId } : {},
+      }),
       invalidatesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),
 
@@ -152,8 +159,21 @@ export const api = createApi({
     }),
 
     // Revoke the current device's token server-side (other devices stay in).
+    // Account-scoped reads must refetch as the anonymous device, but NOT via
+    // invalidatesTags here: that fires the refetches when the mutation
+    // fulfills, racing clearAuth() — they'd carry the just-revoked Bearer and
+    // 401. useAccount invalidates ['History','Purchases','Credits'] manually
+    // AFTER clearAuth().
     logout: builder.mutation<LogoutResponse, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
+    }),
+
+    // Permanent account deletion (App Store 5.1.1(v) / Play policy): erases
+    // the account + its synced history and revokes every session. Purchases
+    // made on THIS device remain available to it (device-owned). Same
+    // invalidation rule as logout: useAccount invalidates after clearAuth().
+    deleteAccount: builder.mutation<LogoutResponse, void>({
+      query: () => ({ url: '/user', method: 'DELETE' }),
     }),
 
     // Claim anonymous device activity onto the account + copy local history up.
@@ -199,11 +219,11 @@ export const {
   useLookupVinMutation,
   useLookupPlateMutation,
   useRefreshPlateMutation,
-  useStartPlatePurchaseMutation,
-  useConfirmPlatePurchaseMutation,
   useGetVehicleBasicQuery,
   useStartPurchaseMutation,
   useConfirmPurchaseMutation,
+  useGetCreditsQuery,
+  useRedeemReportMutation,
   useGetReportQuery,
   useRefreshReportMutation,
   useRetryReportMutation,
@@ -213,6 +233,7 @@ export const {
   useForgotPasswordMutation,
   useResetPasswordMutation,
   useLogoutMutation,
+  useDeleteAccountMutation,
   useSyncHistoryMutation,
   useGetHistoryQuery,
   useGetPurchasesQuery,

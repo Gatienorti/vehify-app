@@ -23,8 +23,8 @@ export type LookupSource = 'cache' | 'live';
 /**
  * What the user owns for a vehicle (Report Tiers MVP v2):
  *   basic            — Basic Report: free VIN/plate result (verify + identify)
- *   buyers_analysis  — Buyer Report: "should I buy this?" ($1.99 / $1.74)
- *   complete_history — Premium Report: buyers_analysis + full history (+$3 = $4.99)
+ *   buyers_analysis  — Buyer Report: "should I buy this?" ($1.99)
+ *   complete_history — Premium Report: buyers_analysis + full history (+$2.99 = $4.98)
  */
 export type ReportTier = 'basic' | 'buyers_analysis' | 'complete_history';
 
@@ -74,6 +74,12 @@ export interface FuelEconomy {
   gas_price_per_gallon?: number | null;
   /** ISO date of the price week behind annual_fuel_cost_current. */
   gas_price_as_of?: string | null;
+  /** EV/PHEV context (null on conventional cars; combined_mpg is MPGe for EVs). */
+  electric_range?: number | null;
+  /** Hours to charge on a 240V (Level 2) charger. */
+  charge_time_240v?: number | null;
+  /** EPA alternative-fuel class, e.g. "EV", "Plug-in Hybrid Vehicle". */
+  atv_type?: string | null;
 }
 
 /**
@@ -146,21 +152,29 @@ export interface ServiceRecord {
  */
 export interface BuyersAnalysis {
   /**
-   * Model & Deal honesty split (Report Tiers v2.1):
+   * Honesty split (valuation move):
    *  - modelScore judges the MODEL's track record (complaints, recalls, TSBs,
-   *    federal investigations, crash rating) — always present.
+   *    federal investigations, crash rating) — present on every NEW report,
+   *    but null on some legacy pre-split reports (the backend resource emits
+   *    null when analysis.model_score is absent), so renders must guard.
    *  - buyScore judges THIS VIN's records — null until the buyer owns the
    *    Complete Vehicle History (that's the upsell).
+   *  - OUR valuation (estimatedValue, valueLow/High, msrp, depreciationPct,
+   *    suggestedOffer, negotiationAdvice, valueByMileage) is Premium-only:
+   *    absent/null on new Buyer Reports. listingComps stay on BOTH tiers —
+   *    raw observed asking prices, not our valuation.
+   *  - deal/askingPrice are LEGACY: the asking-price input was removed, so
+   *    new reports never carry them — kept so old purchased reports render.
    */
-  modelScore: BuyScore;
+  modelScore: BuyScore | null;
   buyScore?: BuyScore | null;
-  /** Asking price vs market value at the entered mileage. verdict null without askingPrice. */
+  /** LEGACY (old reports only) — the deal verdict feature was removed. */
   deal?: {
     verdict: 'good' | 'fair' | 'high' | null;
     priceDelta: number | null;
     reason: string;
   } | null;
-  /** The asking price the buyer entered at purchase (dollars). */
+  /** LEGACY (old reports only) — the asking-price input was removed. */
   askingPrice?: number | null;
   /** NHTSA defect investigations into this model — open ones are the red flag. */
   investigations?: {
@@ -177,7 +191,7 @@ export interface BuyersAnalysis {
     }[];
   } | null;
   recommendation: string;
-  /** Market value — a paid provider call, a single point estimate. */
+  /** Market value — Premium only; a paid provider call, single point estimate. */
   estimatedValue?: number | null;
   /**
    * Estimated uncertainty band around the point estimate (±%). NOT a set of
@@ -194,8 +208,9 @@ export interface BuyersAnalysis {
   msrp?: number | null;
   /** Percent of MSRP lost since new (0–100), derived from msrp vs estimate. */
   depreciationPct?: number | null;
-  /** AI-suggested offer to make. */
+  /** AI-suggested offer to make — Premium only. */
   suggestedOffer?: number | null;
+  /** Negotiation advice — Premium only (valuation content). */
   negotiationAdvice?: string | null;
   mileageHistory: MileagePoint[];
   rollbackDetected: boolean;
@@ -233,11 +248,12 @@ export interface BuyersAnalysis {
       url: string | null;
     }[];
   } | null;
-  /** The odometer reading the buyer entered at purchase (miles). */
+  /** LEGACY (old reports only) — the odometer input was removed; Premium's valuation mileage comes from history records. */
   buyerMileage?: number | null;
   /**
-   * Locally computed value-vs-mileage band around the estimate — shows how
-   * mileage moves the price (negotiation ammo). Centered on buyerMileage.
+   * Locally computed value-vs-mileage band around the estimate (Premium
+   * only) — shows how mileage moves the price. Centered on the history
+   * odometer (or buyerMileage on legacy reports).
    */
   valueByMileage?: { mileage: number; estimate: number }[];
   /**

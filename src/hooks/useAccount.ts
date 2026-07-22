@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { clearAuth, setAuth } from '../store/authSlice';
 import {
+  api,
+  useDeleteAccountMutation,
   useForgotPasswordMutation,
   useLoginEmailMutation,
   useLogoutMutation,
@@ -38,6 +40,7 @@ export function useAccount() {
   const [forgotPasswordReq] = useForgotPasswordMutation();
   const [resetPasswordReq] = useResetPasswordMutation();
   const [logout] = useLogoutMutation();
+  const [deleteAccountReq] = useDeleteAccountMutation();
   const [syncHistory] = useSyncHistoryMutation();
   const [busy, setBusy] = useState(false);
 
@@ -113,12 +116,33 @@ export function useAccount() {
           // Even if the network call fails, clear locally so the user is signed out.
         }
         dispatch(clearAuth());
+        // Refetch account-scoped reads AFTER the token is gone — invalidating
+        // from the mutation itself races clearAuth and 401s on the revoked
+        // Bearer, leaving History/Purchases stuck in error until refocus.
+        dispatch(api.util.invalidateTags(['History', 'Purchases', 'Credits']));
         track('account_signed_out');
       }),
     [run, logout, dispatch],
   );
 
-  return { user, isAuthenticated, signIn, register, login, forgotPassword, resetPassword, signOut, busy };
+  // Permanent deletion (store policy requirement). Unlike signOut, the server
+  // call must SUCCEED before the local session drops — silently clearing on a
+  // failed delete would leave the user believing an account still on the
+  // server is gone. Purchases made on this device stay usable (device-owned).
+  const deleteAccount = useCallback(
+    () =>
+      run(async () => {
+        await deleteAccountReq().unwrap();
+        dispatch(clearAuth());
+        // Same ordering rule as signOut: refetch as the anonymous device only
+        // after the (now-deleted) session is out of the store.
+        dispatch(api.util.invalidateTags(['History', 'Purchases', 'Credits']));
+        track('account_deleted');
+      }),
+    [run, deleteAccountReq, dispatch],
+  );
+
+  return { user, isAuthenticated, signIn, register, login, forgotPassword, resetPassword, signOut, deleteAccount, busy };
 }
 
 function toSyncItem(e: HistoryEntry): HistorySyncItem {
