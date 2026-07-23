@@ -97,6 +97,23 @@ const fullReport: ReportResponse = {
       gas_price_per_gallon: 3.09,
       gas_price_as_of: '2026-07-13',
     },
+    // Typical 5-year ownership cost — depreciation slice on premium only.
+    ownershipCost: {
+      years: 5,
+      milesPerYear: 15000,
+      total: 41750,
+      costPerMile: 0.56,
+      includesDepreciation: true,
+      state: 'CA',
+      slices: [
+        { key: 'depreciation', label: 'Depreciation', total: 6070 },
+        { key: 'insurance', label: 'Insurance', total: 8900 },
+        { key: 'fuel', label: 'Fuel', total: 7250 },
+        { key: 'maintenance', label: 'Maintenance', total: 4500 },
+        { key: 'repairs', label: 'Repairs', total: 3380 },
+        { key: 'fees', label: 'Taxes & fees', total: 2400 },
+      ],
+    },
     // EV/plug-in only (null for gas cars) — incentives + charging density.
     evOwnership: {
       incentives: {

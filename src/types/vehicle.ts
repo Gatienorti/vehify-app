@@ -15,6 +15,26 @@ export interface Vehicle {
   horsepower?: number;
   doors?: number;
   seats?: number;
+  /** Extended vPIC identity detail (all free) — null/absent when NHTSA lacks it. */
+  displacement?: string;
+  cylinders?: number;
+  engineConfiguration?: string;
+  turbo?: string;
+  transmissionSpeeds?: number;
+  electrification?: string;
+  batteryKwh?: number;
+  batteryType?: string;
+  plantCountry?: string;
+  plantCity?: string;
+  series?: string;
+  vehicleType?: string;
+  gvwrClass?: string;
+  wheelbase?: number;
+  curbWeight?: number;
+  abs?: string;
+  /** EPA fuel economy (free) — surfaced on the free basic result too. */
+  cityMpg?: number;
+  highwayMpg?: number;
 }
 
 /** Where a lookup result came from — drives free-refresh rules (spec §9, §10). */
@@ -54,6 +74,25 @@ export interface SafetyRating {
   front_crash?: number;
   side_crash?: number;
   rollover?: number;
+}
+
+export interface OwnershipCostSlice {
+  key: string;
+  label: string;
+  total: number;
+}
+
+/** Typical N-year ownership cost — hedged estimate, never a per-VIN promise. */
+export interface OwnershipCost {
+  years: number;
+  milesPerYear: number;
+  total: number;
+  costPerMile: number;
+  /** Depreciation slice present (valuation content — Complete History only). */
+  includesDepreciation: boolean;
+  /** Insurance basis state (from the plate lookup) — null means U.S. average. */
+  state?: string | null;
+  slices: OwnershipCostSlice[];
 }
 
 /** EPA fuel economy estimates, plus live enrichment when available. */
@@ -265,6 +304,12 @@ export interface BuyersAnalysis {
   safety?: SafetyRating | null;
   /** EPA fuel economy for this model, when on file. */
   fuelEconomy?: FuelEconomy | null;
+  /**
+   * Typical 5-year ownership cost (fuel = real EPA×EIA numbers; depreciation =
+   * our valuation heuristic, premium only; rest = U.S. typical-cost tables).
+   * Absent on legacy reports and the B2B surface.
+   */
+  ownershipCost?: OwnershipCost | null;
   /** EV/plug-in only — incentives + charging context. Null for gas cars. */
   evOwnership?: EvOwnership | null;
 }

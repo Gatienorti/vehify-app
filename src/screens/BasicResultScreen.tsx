@@ -170,7 +170,21 @@ export default function BasicResultScreen({ navigation, route }: Props) {
               ['Transmission', data.vehicle.transmission],
               ['Drive type', data.vehicle.driveType],
               ['Fuel type', data.vehicle.fuelType],
+              [
+                'Fuel economy',
+                data.vehicle.cityMpg && data.vehicle.highwayMpg
+                  ? `${data.vehicle.cityMpg} city / ${data.vehicle.highwayMpg} hwy MPG`
+                  : undefined,
+              ],
               ['Color', data.vehicle.color],
+              [
+                'Assembled in',
+                [data.vehicle.plantCity, data.vehicle.plantCountry].filter(Boolean).join(', ') || undefined,
+              ],
+              [
+                'Curb weight',
+                data.vehicle.curbWeight ? `${data.vehicle.curbWeight.toLocaleString()} lb` : undefined,
+              ],
               ['Manufacturer', data.vehicle.manufacturer],
             ] satisfies [string, string | undefined][]
           )

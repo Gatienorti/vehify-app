@@ -45,7 +45,7 @@ import {
   valueBarWidthPct,
 } from '../utils/report';
 import type { StackScreenProps } from '../types/navigation';
-import type { BuyersAnalysis, VehicleHistory } from '../types/vehicle';
+import type { BuyersAnalysis, OwnershipCost, Vehicle, VehicleHistory } from '../types/vehicle';
 
 type Props = StackScreenProps<'PremiumReport'>;
 
@@ -199,6 +199,115 @@ function PremiumGroupHeader() {
         </Text>
       </View>
     </View>
+  );
+}
+
+/**
+ * Full free-decode spec sheet — parity with the web report's Specifications
+ * card. Rows with no data are skipped entirely (never a "No data" filler);
+ * collapsed by default: it's reference material, not verdict.
+ */
+function SpecificationsSection({ vehicle }: { vehicle: Vehicle }) {
+  const rows = (
+    [
+      ['Trim', vehicle.trim],
+      ['Displacement', vehicle.displacement ? `${vehicle.displacement} L` : undefined],
+      ['Cylinders', vehicle.cylinders ? String(vehicle.cylinders) : undefined],
+      ['Engine config', vehicle.engineConfiguration],
+      ['Turbo', vehicle.turbo],
+      ['Horsepower', vehicle.horsepower ? `${vehicle.horsepower} hp` : undefined],
+      [
+        'Transmission',
+        vehicle.transmission
+          ? vehicle.transmissionSpeeds
+            ? `${vehicle.transmissionSpeeds}-speed ${vehicle.transmission}`
+            : vehicle.transmission
+          : undefined,
+      ],
+      ['Doors', vehicle.doors ? String(vehicle.doors) : undefined],
+      ['Seats', vehicle.seats ? String(vehicle.seats) : undefined],
+      ['Series', vehicle.series],
+      ['Vehicle type', vehicle.vehicleType],
+      [
+        'Assembled in',
+        [vehicle.plantCity, vehicle.plantCountry].filter(Boolean).join(', ') || undefined,
+      ],
+      ['GVWR class', vehicle.gvwrClass],
+      ['Wheelbase', vehicle.wheelbase ? `${vehicle.wheelbase} in` : undefined],
+      ['Curb weight', vehicle.curbWeight ? `${vehicle.curbWeight.toLocaleString()} lb` : undefined],
+      ['ABS', vehicle.abs],
+      ['Electrification', vehicle.electrification],
+      [
+        'Battery',
+        vehicle.batteryKwh
+          ? `${vehicle.batteryKwh} kWh${vehicle.batteryType ? ` ${vehicle.batteryType}` : ''}`
+          : vehicle.batteryType,
+      ],
+    ] satisfies [string, string | undefined][]
+  ).filter((entry): entry is [string, string] => Boolean(entry[1]));
+
+  if (rows.length === 0) return null;
+
+  return (
+    <CollapsibleSection title="Specifications" icon={Car} summary={`${rows.length} details`} defaultOpen>
+      {rows.map(([label, value]) => (
+        <StatRow key={label} label={label} value={value} />
+      ))}
+    </CollapsibleSection>
+  );
+}
+
+/** Chart palette — brand-blue family, assigned by slice order. Deliberately
+ *  NOT the severity colors: a cost chart carries no good/bad judgement. */
+const OC_PALETTE = ['#1E63EB', '#38A3F5', '#2EC4B6', '#63D68C', '#A8CFF0', '#C9D8F0'];
+
+/**
+ * Typical 5-year ownership cost — fuel is real (EPA × this week's pump
+ * price), depreciation is our valuation heuristic (premium only), the rest
+ * are U.S. typical-cost tables. Copy stays hedged ("typical", "varies").
+ */
+function OwnershipCostSection({ cost, upsell }: { cost: OwnershipCost; upsell: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <CollapsibleSection
+      title={`${cost.years}-year ownership cost`}
+      icon={DollarSign}
+      summary={`≈ $${cost.total.toLocaleString()}`}
+      premium={cost.includesDepreciation}
+      defaultOpen
+    >
+      <Text style={[styles.ocHeadline, { color: colors.text }]}>
+        ≈ ${cost.total.toLocaleString()}
+        <Text style={[styles.ocHeadlineSub, { color: colors.textMuted }]}>
+          {`  over ${cost.years} years · $${cost.costPerMile.toFixed(2)}/mi`}
+        </Text>
+      </Text>
+      {/* Stacked share bar — widths proportional to each slice. */}
+      <View style={styles.ocBar}>
+        {cost.slices.map((s, i) => (
+          <View key={s.key} style={{ flex: s.total, backgroundColor: OC_PALETTE[i % OC_PALETTE.length] }} />
+        ))}
+      </View>
+      {cost.slices.map((s, i) => (
+        <View key={s.key} style={[styles.statRow, { borderColor: colors.border }]}>
+          <View style={styles.ocRowLeft}>
+            <View style={[styles.ocDot, { backgroundColor: OC_PALETTE[i % OC_PALETTE.length] }]} />
+            <Text style={[styles.statLabel, { color: colors.textMuted }]}>{s.label}</Text>
+          </View>
+          <Text style={[styles.statValue, { color: colors.text }]}>${s.total.toLocaleString()}</Text>
+        </View>
+      ))}
+      <Text style={[styles.sourceNote, { color: colors.textMuted }]}>
+        Typical costs for this type of vehicle — U.S. averages
+        {cost.state ? ` (insurance: ${cost.state} basis)` : ''}, {cost.milesPerYear.toLocaleString()} mi/yr
+        {cost.slices.some((s) => s.key === 'fuel') ? ', fuel at this week’s price' : ''}. Actual costs vary.
+      </Text>
+      {upsell ? (
+        <Text style={[styles.sourceNote, { color: colors.textMuted }]}>
+          A depreciation estimate for this exact car is included with the Complete History upgrade.
+        </Text>
+      ) : null}
+    </CollapsibleSection>
   );
 }
 
@@ -552,28 +661,6 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
         <VehicleCard vehicle={data.vehicle} />
 
-        {/* Equipment is identity ("what this trim comes with"), so it lives
-            with the car — collapsed to one row so the verdict stays on top. */}
-        {analysis.factoryEquipment.length ? (
-          <CollapsibleSection
-            title="Factory equipment"
-            icon={ClipboardList}
-            summary={`${analysis.factoryEquipment.length} items`}
-          >
-            <Text style={[styles.cardBody, { color: colors.textMuted }]}>
-              Typical equipment for this trim — not a verified build sheet for this exact VIN.
-            </Text>
-            <View style={styles.equipList}>
-              {analysis.factoryEquipment.map((item, i) => (
-                <Text key={`${i}-${item}`} style={[styles.equipItem, { color: colors.text }]}>
-                  {'•  '}
-                  {item}
-                </Text>
-              ))}
-            </View>
-          </CollapsibleSection>
-        ) : null}
-
         {/* The 5-second verdict: worst findings as chips (or a green all-clear).
             Everything below is the supporting evidence. */}
         <View style={styles.flagStrip}>
@@ -582,72 +669,44 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           ))}
         </View>
 
+        {/* The verdict leads: the best score owned — per-VIN Buy Score on
+            premium, Model Score on the analysis tier. (Premium also shows
+            Model Score lower down as supporting context.) */}
+        {history && analysis.buyScore ? (
+          <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" premium />
+        ) : !history && analysis.modelScore ? (
+          <ScoreBadge score={analysis.modelScore} label="Model Score" />
+        ) : null}
+
+        {/* Where the per-VIN Buy Score would sit on premium: a one-line locked
+            hint — plants the upgrade early without interrupting the report.
+            The full CTA card lives at the end, after the recommendation. */}
+        {!history ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="See Premium upgrade"
+            onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
+            style={[styles.upsellHint, { backgroundColor: colors.primary }]}
+          >
+            <Lock size={16} color={colors.onPrimary} strokeWidth={2.5} />
+            <Text style={[styles.upsellHintText, { color: colors.onPrimary }]}>
+              Buy Score & records for this exact car
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {/* Analysis tier: the money block right after the verdict chips.
+            (Premium renders it inside the per-VIN block instead.) */}
+        {!history && analysis.ownershipCost ? (
+          <OwnershipCostSection cost={analysis.ownershipCost} upsell />
+        ) : null}
+
         {/* Premium-first: what the +$3 unlocked leads the page — banner,
             per-VIN Buy Score and this VIN's records. Model-level context
             collapses below (open only while it holds an active finding). */}
         {history ? (
           <>
             <PremiumGroupHeader />
-            {analysis.buyScore ? (
-              <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" premium />
-            ) : null}
-            <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0} premium>
-              {/* The report's own badges — its official designations. */}
-              {history.highlights?.length ? (
-                <View style={[styles.flagChipWrap, styles.highlightWrap]}>
-                  {history.highlights.map((h) => (
-                    <View key={h} style={[styles.flagChip, { backgroundColor: `${colors.scoreGreen}1A` }]}>
-                      <Text style={[styles.flagChipText, { color: colors.scoreGreen }]}>{h}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-              <StatRow label="Accidents reported" value={String(history.accidents)} bad={history.accidents > 0} />
-              <StatRow label="Title brands" value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'} bad={history.titleBrands.length > 0} />
-              <StatRow label="Theft records" value={String(history.thefts)} bad={history.thefts > 0} />
-              <StatRow label="Odometer issues" value={String(history.odometerIssues)} bad={history.odometerIssues > 0} />
-              <StatRow label="Owners" value={history.owners ? String(history.owners) : 'Unknown'} />
-              {history.locations?.length ? (
-                <StatRow label="Registered in" value={history.locations.join(', ')} />
-              ) : null}
-              {history.warranty ? <StatRow label="Warranty" value={history.warranty} /> : null}
-              {/* Per-VIN flag from the report itself — distinct from the
-                  model-level recall list further down. */}
-              {history.openRecallReported != null ? (
-                <StatRow
-                  label="Open recall on this car"
-                  value={history.openRecallReported ? 'Yes — not yet repaired' : 'None reported'}
-                  bad={history.openRecallReported}
-                />
-              ) : null}
-              {history.lienRecords?.length ? (
-                <>
-                  <StatRow
-                    label="Loan / lien reported"
-                    value={history.lienRecords.map((l) => l.date.slice(0, 4)).join(', ')}
-                  />
-                  <Text style={[styles.sourceNote, { color: colors.textMuted }]}>
-                    A loan or lien was reported — confirm it has been released before the title
-                    transfers to you.
-                  </Text>
-                </>
-              ) : null}
-              {history.autocheckScore ? (
-                <StatRow
-                  label="History score"
-                  value={
-                    history.autocheckScore.rangeLow != null
-                      ? `${history.autocheckScore.score} (similar cars: ${history.autocheckScore.rangeLow}–${history.autocheckScore.rangeHigh ?? '?'})`
-                      : String(history.autocheckScore.score)
-                  }
-                  bad={
-                    history.autocheckScore.rangeLow != null &&
-                    history.autocheckScore.score < history.autocheckScore.rangeLow
-                  }
-                />
-              ) : null}
-            </Section>
-
             {/* Value & pricing — ONE fused card: the record-derived value,
                 the history events that moved it, and the offer guidance.
                 (Fused with the old "History-based value" section: since the
@@ -737,6 +796,69 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 library. A projection from the single market estimate, NOT
                 observed per-mile sale data, so it's labelled as an estimate. */}
             {valueCurveSection}
+
+            {/* Directly after the price block (user decision) — what the NEXT
+                five years cost, right after what the car costs today. */}
+            {analysis.ownershipCost ? (
+              <OwnershipCostSection cost={analysis.ownershipCost} upsell={false} />
+            ) : null}
+
+            <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0} premium>
+              {/* The report's own badges — its official designations. */}
+              {history.highlights?.length ? (
+                <View style={[styles.flagChipWrap, styles.highlightWrap]}>
+                  {history.highlights.map((h) => (
+                    <View key={h} style={[styles.flagChip, { backgroundColor: `${colors.scoreGreen}1A` }]}>
+                      <Text style={[styles.flagChipText, { color: colors.scoreGreen }]}>{h}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <StatRow label="Accidents reported" value={String(history.accidents)} bad={history.accidents > 0} />
+              <StatRow label="Title brands" value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'} bad={history.titleBrands.length > 0} />
+              <StatRow label="Theft records" value={String(history.thefts)} bad={history.thefts > 0} />
+              <StatRow label="Odometer issues" value={String(history.odometerIssues)} bad={history.odometerIssues > 0} />
+              <StatRow label="Owners" value={history.owners ? String(history.owners) : 'Unknown'} />
+              {history.locations?.length ? (
+                <StatRow label="Registered in" value={history.locations.join(', ')} />
+              ) : null}
+              {history.warranty ? <StatRow label="Warranty" value={history.warranty} /> : null}
+              {/* Per-VIN flag from the report itself — distinct from the
+                  model-level recall list further down. */}
+              {history.openRecallReported != null ? (
+                <StatRow
+                  label="Open recall on this car"
+                  value={history.openRecallReported ? 'Yes — not yet repaired' : 'None reported'}
+                  bad={history.openRecallReported}
+                />
+              ) : null}
+              {history.lienRecords?.length ? (
+                <>
+                  <StatRow
+                    label="Loan / lien reported"
+                    value={history.lienRecords.map((l) => l.date.slice(0, 4)).join(', ')}
+                  />
+                  <Text style={[styles.sourceNote, { color: colors.textMuted }]}>
+                    A loan or lien was reported — confirm it has been released before the title
+                    transfers to you.
+                  </Text>
+                </>
+              ) : null}
+              {history.autocheckScore ? (
+                <StatRow
+                  label="History score"
+                  value={
+                    history.autocheckScore.rangeLow != null
+                      ? `${history.autocheckScore.score} (similar cars: ${history.autocheckScore.rangeLow}–${history.autocheckScore.rangeHigh ?? '?'})`
+                      : String(history.autocheckScore.score)
+                  }
+                  bad={
+                    history.autocheckScore.rangeLow != null &&
+                    history.autocheckScore.score < history.autocheckScore.rangeLow
+                  }
+                />
+              ) : null}
+            </Section>
 
             {/* The report's own findings — severity marks the DOT, not whole
                 paragraphs; red text is reserved for Alert-level findings. */}
@@ -901,10 +1023,10 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </>
         ) : null}
 
-        {/* v2.1 honesty split — the MODEL's track record. Present on every new
-            report; some legacy pre-split reports stored null, so guard. On
-            premium it reads below the per-VIN block as supporting context. */}
-        {analysis.modelScore ? <ScoreBadge score={analysis.modelScore} label="Model Score" /> : null}
+        {/* v2.1 honesty split — the MODEL's track record as supporting
+            context below the per-VIN block. On the analysis tier the Model
+            Score is the headline at the top instead. */}
+        {history && analysis.modelScore ? <ScoreBadge score={analysis.modelScore} label="Model Score" /> : null}
 
         {/* LEGACY pre-split Buyer reports stored valuation at this tier — old
             reports render whatever they paid for. New Buyer reports never
@@ -965,42 +1087,6 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             ) : null}
             <Text style={[styles.cardBody, { color: colors.text }]}>{deal.reason}</Text>
           </Section>
-        ) : null}
-
-        <Section title="Our recommendation" icon={Lightbulb}>
-          <Text style={[styles.cardBody, styles.reco, { color: colors.text }]}>
-            {analysis.recommendation}
-          </Text>
-        </Section>
-
-        {/* Tier-3 only: the per-VIN Buy Score lives in the premium block on
-            complete_history; here it is honestly LOCKED — we haven't seen this
-            VIN's records yet, and that's the upgrade. */}
-        {!history ? (
-          <View style={[styles.lockedCard, { backgroundColor: colors.surfaceAlt }]}>
-            <View style={styles.lockedHeader}>
-              <Lock size={18} color={colors.premium} strokeWidth={2.5} />
-              <Text style={[styles.lockedTitle, { color: colors.text }]}>
-                {analysis.modelScore?.band === 'green'
-                  ? 'Model checks out — now verify this exact car'
-                  : 'Verify this exact car'}
-              </Text>
-            </View>
-            <Text style={[styles.upsellText, { color: colors.textMuted }]}>
-              This analysis hasn&apos;t seen this VIN&apos;s records. Unlock the Buy Score for this
-              exact car, its market value with a suggested offer and negotiation advice, plus
-              accident, title, theft, odometer, ownership, auction and service records.
-            </Text>
-            <PrimaryButton
-              label={
-                upgradeWithCredit
-                  ? `${creditLabel(upgradeCreditCost)} — Premium Report`
-                  : `Add Premium Report — +${formatUsd(PRICING.completeUpgrade)}`
-              }
-              onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
-              style={{ marginTop: 12 }}
-            />
-          </View>
         ) : null}
 
         {/* Recent asking prices for comparable cars — REAL market evidence on
@@ -1140,28 +1226,28 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             title="Crash safety"
             icon={Star}
             summary={`${Math.max(0, Math.min(5, analysis.safety.overall))}/5 overall`}
-            defaultOpen={!history}
+            defaultOpen
           >
-            {(() => {
-              const overall = Math.max(0, Math.min(5, analysis.safety.overall));
-              return (
-                <StatRow
-                  label="Overall rating"
-                  value={`${'★'.repeat(overall)}${'☆'.repeat(5 - overall)}  ${overall}/5`}
-                />
-              );
-            })()}
-            {analysis.safety.front_crash ? (
-              <StatRow label="Front crash" value={`${analysis.safety.front_crash}/5`} />
-            ) : null}
-            {analysis.safety.side_crash ? (
-              <StatRow label="Side crash" value={`${analysis.safety.side_crash}/5`} />
-            ) : null}
-            {analysis.safety.rollover ? (
-              <StatRow label="Rollover" value={`${analysis.safety.rollover}/5`} />
-            ) : null}
+            {(
+              [
+                ['Overall rating', analysis.safety.overall],
+                ['Front crash', analysis.safety.front_crash],
+                ['Side crash', analysis.safety.side_crash],
+                ['Rollover', analysis.safety.rollover],
+              ] satisfies [string, number | undefined][]
+            )
+              .filter((entry): entry is [string, number] => Boolean(entry[1]))
+              .map(([label, score]) => {
+                const s = Math.max(0, Math.min(5, Math.round(score)));
+                return (
+                  <StatRow key={label} label={label} value={`${'★'.repeat(s)}${'☆'.repeat(5 - s)}  ${s}/5`} />
+                );
+              })}
           </CollapsibleSection>
         ) : null}
+
+        {/* Full spec sheet — identity detail, so it lives with the car. */}
+        <SpecificationsSection vehicle={data.vehicle} />
 
         {/* EPA fuel economy — snake_case fields are contract-accurate. */}
         {analysis.fuelEconomy ? (
@@ -1169,7 +1255,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             title="Fuel economy"
             icon={Fuel}
             summary={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'} combined`}
-            defaultOpen={!history}
+            defaultOpen
           >
             <StatRow
               label="Combined"
@@ -1225,8 +1311,30 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               />
             ) : null}
             {analysis.fuelEconomy.co2_gpm ? (
-              <StatRow label="CO₂ emissions" value={`${analysis.fuelEconomy.co2_gpm} g/mi`} />
+              <StatRow label="CO₂ emissions" value={`${Math.round(analysis.fuelEconomy.co2_gpm)} g/mi`} />
             ) : null}
+          </CollapsibleSection>
+        ) : null}
+
+        {/* Equipment is identity ("what this trim comes with"), so it lives
+            with the car — collapsed to one row so the verdict stays on top. */}
+        {analysis.factoryEquipment.length ? (
+          <CollapsibleSection
+            title="Factory equipment"
+            icon={ClipboardList}
+            summary={`${analysis.factoryEquipment.length} items`}
+          >
+            <Text style={[styles.cardBody, { color: colors.textMuted }]}>
+              Typical equipment for this trim — not a verified build sheet for this exact VIN.
+            </Text>
+            <View style={styles.equipList}>
+              {analysis.factoryEquipment.map((item, i) => (
+                <Text key={`${i}-${item}`} style={[styles.equipItem, { color: colors.text }]}>
+                  {'•  '}
+                  {item}
+                </Text>
+              ))}
+            </View>
           </CollapsibleSection>
         ) : null}
 
@@ -1268,6 +1376,44 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </CollapsibleSection>
         ) : null}
 
+        {/* The wrap-up — after all the evidence, not before it. */}
+        <Section title="Our recommendation" icon={Lightbulb}>
+          <Text style={[styles.cardBody, styles.reco, { color: colors.text }]}>
+            {analysis.recommendation}
+          </Text>
+        </Section>
+
+        {/* Tier-3 only: the per-VIN Buy Score lives in the premium block on
+            complete_history; here it is honestly LOCKED — we haven't seen this
+            VIN's records yet, and that's the upgrade. */}
+        {!history ? (
+          <View style={[styles.lockedCard, { backgroundColor: colors.surfaceAlt }]}>
+            <View style={styles.lockedHeader}>
+              <Lock size={18} color={colors.premium} strokeWidth={2.5} />
+              <Text style={[styles.lockedTitle, { color: colors.text }]}>
+                {analysis.modelScore?.band === 'green'
+                  ? 'Model checks out — now verify this exact car'
+                  : 'Verify this exact car'}
+              </Text>
+            </View>
+            <Text style={[styles.upsellText, { color: colors.textMuted }]}>
+              This analysis hasn&apos;t seen this VIN&apos;s records. Unlock the Buy Score for this
+              exact car, its market value with a suggested offer and negotiation advice, plus
+              accident, title, theft, odometer, ownership, auction and service records.
+            </Text>
+            <PrimaryButton
+              label={
+                upgradeWithCredit
+                  ? `${creditLabel(upgradeCreditCost)} — Premium Report`
+                  : `Add Premium Report — +${formatUsd(PRICING.completeUpgrade)}`
+              }
+              onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
+              style={{ marginTop: 12 }}
+            />
+          </View>
+        ) : null}
+
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -1293,6 +1439,13 @@ const styles = StyleSheet.create({
   recordRow: { paddingVertical: 10, gap: 2, borderBottomWidth: StyleSheet.hairlineWidth },
   evIncentive: { fontSize: 13.5, lineHeight: 19, paddingVertical: 4 },
   sourceNote: { fontSize: 12, lineHeight: 16, paddingTop: 6, paddingBottom: 2 },
+  ocHeadline: { fontSize: 22, fontWeight: '800' },
+  ocHeadlineSub: { fontSize: 13, fontWeight: '500' },
+  ocBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 10, marginBottom: 4 },
+  ocRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  ocDot: { width: 9, height: 9, borderRadius: 4.5 },
+  upsellHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  upsellHintText: { fontSize: 14, fontWeight: '700', flexShrink: 1 },
   recordMeta: { fontSize: 12.5, fontWeight: '600' },
   recordBody: { fontSize: 14, lineHeight: 20 },
   flagStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
