@@ -158,7 +158,14 @@ const fullReport: ReportResponse = {
     warranty: 'Original warranty estimated to have expired.',
     locations: ['New York'],
     highlights: ['CARFAX 1-Owner Vehicle'],
-    lienRecords: [{ date: '2008-10-28', detail: 'Title issued or updated. Loan or lien reported' }],
+    lienRecords: [{ date: '2008-10-28', detail: 'Loan or lien reported' }],
+    adminRecords: [
+      {
+        date: '2008-10-28',
+        events: ['Title issued or updated', 'Loan or lien reported'],
+        lien: true,
+      },
+    ],
     openRecallReported: true,
   },
 };

@@ -15,7 +15,6 @@ import {
   Lightbulb,
   Lock,
   ShieldAlert,
-  ShieldCheck,
   Star,
   Tag,
   TrendingDown,
@@ -26,6 +25,8 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../theme';
+import MarketValueCurve from '../components/MarketValueCurve';
+import MileageHistoryChart from '../components/MileageHistoryChart';
 import VehicleCard from '../components/VehicleCard';
 import ScoreBadge from '../components/ScoreBadge';
 import PrimaryButton from '../components/PrimaryButton';
@@ -40,6 +41,7 @@ import {
   dealVerdictLabel,
   formatPriceDelta,
   nearestMileageIndex,
+  recallComponentLabel,
   sentenceCase,
   shortDate,
   valueBarWidthPct,
@@ -179,26 +181,6 @@ function CollapsibleSection({
         </View>
       ) : null}
     </>
-  );
-}
-
-/**
- * Group banner for the Complete-History block: frames the per-VIN records as
- * one premium unit ("what your upgrade unlocked"). Brand accent only — the
- * severity palette stays reserved for actual findings.
- */
-function PremiumGroupHeader() {
-  const { colors } = useTheme();
-  return (
-    <View style={[styles.premiumGroup, { borderColor: colors.premium, backgroundColor: `${colors.premium}14` }]}>
-      <ShieldCheck size={18} color={colors.premium} strokeWidth={2.5} />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.premiumGroupTitle, { color: colors.text }]}>Complete Vehicle History</Text>
-        <Text style={[styles.premiumGroupSub, { color: colors.textMuted }]}>
-          Records for this exact VIN
-        </Text>
-      </View>
-    </View>
   );
 }
 
@@ -433,7 +415,6 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
     }
   };
   const [retryReport, { isLoading: retrying }] = useRetryReportMutation();
-  const [showAllMileage, setShowAllMileage] = useState(false);
   const [showClosedInvestigations, setShowClosedInvestigations] = useState(false);
   const [showRecalls, setShowRecalls] = useState(false);
 
@@ -634,7 +615,6 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
   ) : null;
 
   const verdictFlags = buildVerdictFlags(analysis, history);
-  const lastMileage = analysis.mileageHistory[analysis.mileageHistory.length - 1];
   const openInvestigations = analysis.investigations?.items.filter((i) => i.isOpen) ?? [];
   const closedInvestigations = analysis.investigations?.items.filter((i) => !i.isOpen) ?? [];
   const conditionFlags = history?.conditionFlags ? dedupeConditionFlags(history.conditionFlags) : [];
@@ -706,103 +686,8 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             collapses below (open only while it holds an active finding). */}
         {history ? (
           <>
-            <PremiumGroupHeader />
-            {/* Value & pricing — ONE fused card: the record-derived value,
-                the history events that moved it, and the offer guidance.
-                (Fused with the old "History-based value" section: since the
-                CheapVHR fold they were the SAME number twice.) On a provider
-                no-hit (older/rare vehicles) say so explicitly: a silent
-                absence reads as a bug to someone who paid for valuation. */}
-            {!analysis.estimatedValue && !analysis.suggestedOffer && !history.historyBasedValue ? (
-              <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
-                Market value isn&apos;t available for this vehicle from our data sources — coverage
-                is thinner for older models. The scores and records are unaffected.
-              </Text>
-            ) : (
-              <Section title="Value & pricing" icon={DollarSign} premium>
-                {/* Headline: our estimate (record-derived on new reports);
-                    a legacy report without one falls back to the history
-                    report's own retail value so the card never opens blank. */}
-                {analysis.estimatedValue ? (
-                  <StatRow
-                    label={
-                      anchorMileage
-                        ? `Value at ${anchorMileage.toLocaleString()} mi`
-                        : 'Est. market value'
-                    }
-                    value={`$${analysis.estimatedValue.toLocaleString()}`}
-                  />
-                ) : history.historyBasedValue ? (
-                  <StatRow
-                    label="Retail value (from its records)"
-                    value={`$${history.historyBasedValue.amount.toLocaleString()}`}
-                  />
-                ) : null}
-                {/* WHY the number is what it is — the history events that
-                    moved it (accident down, one-owner up). The best rows in
-                    the section: they explain the headline. */}
-                {history.historyBasedValue?.events.map((e) => (
-                  <View key={e.label} style={styles.hbvEventRow}>
-                    {e.direction === 'down' ? (
-                      <TrendingDown size={15} color={colors.danger} strokeWidth={2.5} />
-                    ) : (
-                      <TrendingUp size={15} color={colors.scoreGreen} strokeWidth={2.5} />
-                    )}
-                    <Text
-                      style={[
-                        styles.hbvEventText,
-                        { color: e.direction === 'down' ? colors.danger : colors.text },
-                      ]}
-                    >
-                      {e.label}
-                    </Text>
-                  </View>
-                ))}
-                {analysis.valueLow && analysis.valueHigh ? (
-                  <StatRow
-                    label="Estimated range"
-                    value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
-                  />
-                ) : null}
-                {/* Legacy dual-anchor: an old report whose estimate came from
-                    CarAPI shows the history value as a second row. On new
-                    reports they're the SAME number (folded) → suppressed. */}
-                {analysis.estimatedValue &&
-                history.historyBasedValue &&
-                history.historyBasedValue.amount !== analysis.estimatedValue ? (
-                  <StatRow
-                    label="History-based retail value"
-                    value={`$${history.historyBasedValue.amount.toLocaleString()}`}
-                  />
-                ) : null}
-                {/* Real MSRP (carapi.app trims, ~2015–2020) — shown only when
-                    the provider has it; hidden otherwise, never fabricated. */}
-                {analysis.msrp ? (
-                  <StatRow label="Original MSRP" value={`$${analysis.msrp.toLocaleString()}`} />
-                ) : null}
-                {analysis.depreciationPct != null ? (
-                  <StatRow label="Lost since new" value={`~${analysis.depreciationPct}%`} />
-                ) : null}
-                {analysis.suggestedOffer ? (
-                  <StatRow label="Suggested offer" value={`$${analysis.suggestedOffer.toLocaleString()}`} />
-                ) : null}
-                {analysis.negotiationAdvice ? (
-                  <Text style={[styles.cardBody, { color: colors.textMuted }]}>{analysis.negotiationAdvice}</Text>
-                ) : null}
-              </Section>
-            )}
-
-            {/* How mileage moves the price — negotiation ammo, no chart
-                library. A projection from the single market estimate, NOT
-                observed per-mile sale data, so it's labelled as an estimate. */}
-            {valueCurveSection}
-
-            {/* Directly after the price block (user decision) — what the NEXT
-                five years cost, right after what the car costs today. */}
-            {analysis.ownershipCost ? (
-              <OwnershipCostSection cost={analysis.ownershipCost} upsell={false} />
-            ) : null}
-
+            {/* The verdict's evidence headline — badges, title brands,
+                accident/theft counts — directly under the Buy Score. */}
             <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0} premium>
               {/* The report's own badges — its official designations. */}
               {history.highlights?.length ? (
@@ -860,6 +745,139 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               ) : null}
             </Section>
 
+            {/* Value & pricing — ONE fused card: the record-derived value,
+                the history events that moved it, and the offer guidance.
+                (Fused with the old "History-based value" section: since the
+                CheapVHR fold they were the SAME number twice.) On a provider
+                no-hit (older/rare vehicles) say so explicitly: a silent
+                absence reads as a bug to someone who paid for valuation. */}
+            {!analysis.estimatedValue && !analysis.suggestedOffer && !history.historyBasedValue ? (
+              <Text style={[styles.emptyLine, { color: colors.textMuted }]}>
+                Market value isn&apos;t available for this vehicle from our data sources — coverage
+                is thinner for older models. The scores and records are unaffected.
+              </Text>
+            ) : (
+              <Section title="Value & pricing" icon={DollarSign} premium>
+                {/* Headline: the market-value bell curve (same picture as the
+                    web report) — estimate at the peak, below/above-market
+                    shoulders, legacy asking price as a gold marker. A legacy
+                    report without an estimate falls back to the history
+                    report's own retail value so the card never opens blank. */}
+                {analysis.estimatedValue ? (
+                  <>
+                    {/* No comps/mileage footnotes here — comps have their own
+                        section and the value-vs-mileage graph follows next. */}
+                    <MarketValueCurve
+                      average={analysis.estimatedValue}
+                      low={analysis.valueLow}
+                      high={analysis.valueHigh}
+                      asking={analysis.askingPrice}
+                    />
+                  </>
+                ) : history.historyBasedValue ? (
+                  <StatRow
+                    label="Retail value (from its records)"
+                    value={`$${history.historyBasedValue.amount.toLocaleString()}`}
+                  />
+                ) : null}
+                {/* WHY the number is what it is — the history events that
+                    moved it (accident down, one-owner up). The best rows in
+                    the section: they explain the headline. */}
+                {history.historyBasedValue?.events.map((e) => (
+                  <View key={e.label} style={styles.hbvEventRow}>
+                    {e.direction === 'down' ? (
+                      <TrendingDown size={15} color={colors.danger} strokeWidth={2.5} />
+                    ) : (
+                      <TrendingUp size={15} color={colors.scoreGreen} strokeWidth={2.5} />
+                    )}
+                    <Text
+                      style={[
+                        styles.hbvEventText,
+                        { color: e.direction === 'down' ? colors.danger : colors.text },
+                      ]}
+                    >
+                      {e.label}
+                    </Text>
+                  </View>
+                ))}
+                {/* Range row removed — the curve's shoulders show low/high.
+                    Kept only when there's NO curve (legacy retail-value path). */}
+                {!analysis.estimatedValue && analysis.valueLow && analysis.valueHigh ? (
+                  <StatRow
+                    label="Estimated range"
+                    value={`$${analysis.valueLow.toLocaleString()} – $${analysis.valueHigh.toLocaleString()}`}
+                  />
+                ) : null}
+                {/* Legacy dual-anchor: an old report whose estimate came from
+                    CarAPI shows the history value as a second row. On new
+                    reports they're the SAME number (folded) → suppressed. */}
+                {analysis.estimatedValue &&
+                history.historyBasedValue &&
+                history.historyBasedValue.amount !== analysis.estimatedValue ? (
+                  <StatRow
+                    label="History-based retail value"
+                    value={`$${history.historyBasedValue.amount.toLocaleString()}`}
+                  />
+                ) : null}
+                {/* Real MSRP (carapi.app trims, ~2015–2020) — shown only when
+                    the provider has it; hidden otherwise, never fabricated. */}
+                {analysis.msrp ? (
+                  <StatRow label="Original MSRP" value={`$${analysis.msrp.toLocaleString()}`} />
+                ) : null}
+                {analysis.depreciationPct != null ? (
+                  <StatRow label="Lost since new" value={`~${analysis.depreciationPct}%`} />
+                ) : null}
+                {analysis.suggestedOffer ? (
+                  <StatRow label="Suggested offer" value={`$${analysis.suggestedOffer.toLocaleString()}`} />
+                ) : null}
+                {analysis.negotiationAdvice ? (
+                  <Text style={[styles.cardBody, { color: colors.textMuted }]}>{analysis.negotiationAdvice}</Text>
+                ) : null}
+              </Section>
+            )}
+
+            {/* How mileage moves the price — negotiation ammo, no chart
+                library. A projection from the single market estimate, NOT
+                observed per-mile sale data, so it's labelled as an estimate. */}
+            {valueCurveSection}
+
+            {/* Directly after the price block (user decision) — what the NEXT
+                five years cost, right after what the car costs today. */}
+            {analysis.ownershipCost ? (
+              <OwnershipCostSection cost={analysis.ownershipCost} upsell={false} />
+            ) : null}
+
+
+            {/* Mileage & rollback — HISTORY-class data, gated on the complete_history
+                tier (history present), never on the analysis tier. We never fake a
+                timeline or claim a rollback check we didn't run. */}
+            {history && analysis.mileageHistory.length ? (
+              <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected} premium>
+                <StatRow
+                  label="Rollback check"
+                  value={
+                    analysis.rollbackDetected
+                      ? 'Discrepancy found'
+                      : // Absence of records is not a clean bill — only assert
+                        // "no issues" with enough readings to actually compare.
+                        analysis.mileageHistory.length >= 2
+                        ? 'No issues found'
+                        : 'Not enough readings to check'
+                  }
+                  bad={analysis.rollbackDetected}
+                />
+                {/* Odometer-over-time chart (same as the web report) — a red
+                    segment IS the rollback. Service readings dropped (dense
+                    noise); title/registration/inspection readings + the most
+                    recent reading keep the line legible. */}
+                <MileageHistoryChart
+                  history={analysis.mileageHistory}
+                  rollback={analysis.rollbackDetected}
+                  excludeService
+                />
+              </Section>
+            ) : null}
+
             {/* The report's own findings — severity marks the DOT, not whole
                 paragraphs; red text is reserved for Alert-level findings. */}
             {conditionFlags.length ? (
@@ -905,48 +923,6 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                     </View>
                   );
                 })}
-              </Section>
-            ) : null}
-
-            {/* Mileage & rollback — HISTORY-class data, gated on the complete_history
-                tier (history present), never on the analysis tier. We never fake a
-                timeline or claim a rollback check we didn't run. */}
-            {history && analysis.mileageHistory.length ? (
-              <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected} premium>
-                <StatRow
-                  label="Rollback check"
-                  value={
-                    analysis.rollbackDetected
-                      ? 'Discrepancy found'
-                      : // Absence of records is not a clean bill — only assert
-                        // "no issues" with enough readings to actually compare.
-                        analysis.mileageHistory.length >= 2
-                        ? 'No issues found'
-                        : 'Not enough readings to check'
-                  }
-                  bad={analysis.rollbackDetected}
-                />
-                {lastMileage && !showAllMileage ? (
-                  <StatRow
-                    label="Last reported"
-                    value={`${lastMileage.mileage.toLocaleString()} mi (${lastMileage.date})`}
-                  />
-                ) : null}
-                {showAllMileage
-                  ? analysis.mileageHistory.map((p, i) => (
-                      <StatRow key={`${i}-${p.date}`} label={p.date} value={`${p.mileage.toLocaleString()} mi`} />
-                    ))
-                  : null}
-                {analysis.mileageHistory.length > 1 ? (
-                  <ToggleRow
-                    label={
-                      showAllMileage
-                        ? 'Hide readings'
-                        : `Show all ${analysis.mileageHistory.length} readings`
-                    }
-                    onPress={() => setShowAllMileage((s) => !s)}
-                  />
-                ) : null}
               </Section>
             ) : null}
 
@@ -999,9 +975,29 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               </Text>
             )}
 
+            {/* The DMV paper trail — title/registration/lien events, split out
+                of the service timeline (they're paperwork, not maintenance). */}
+            {history.adminRecords?.length ? (
+              <CollapsibleSection
+                title="Title, registration & liens"
+                icon={ClipboardList}
+                summary={`${history.adminRecords.length} records`}
+                alert={history.adminRecords.some((r) => r.lien)}
+                premium
+              >
+                {history.adminRecords.map((r) => (
+                  <RecordRow
+                    key={r.date}
+                    meta={`${r.date}${r.lien ? ' · Lien' : ''}`}
+                    body={r.events.join(' · ')}
+                  />
+                ))}
+              </CollapsibleSection>
+            ) : null}
+
             {history.serviceHistory.length ? (
               <CollapsibleSection
-                title="Service history"
+                title="Service & inspections"
                 icon={Wrench}
                 summary={`${history.serviceHistory.length} records`}
                 premium
@@ -1199,7 +1195,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             ? analysis.openRecalls.map((r, i) => (
                 <RecordRow
                   key={`${i}-${r.id}`}
-                  meta={`${r.id}${r.component ? ` · ${sentenceCase(r.component.split(':')[0])}` : ''}`}
+                  meta={`${r.id}${r.component ? ` · ${recallComponentLabel(r.component)}` : ''}`}
                   body={sentenceCase(r.summary)}
                 />
               ))
@@ -1213,6 +1209,11 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               }
               onPress={() => setShowRecalls((s) => !s)}
             />
+          ) : null}
+          {analysis.openRecalls.length ? (
+            <Text style={[styles.sourceNote, { color: colors.textMuted }]}>
+              Safety recall repairs are free at the manufacturer’s dealerships.
+            </Text>
           ) : null}
           <StatRow label="Manufacturer communications" value={String(analysis.manufacturerCommunications)} />
           {analysis.complaintTrends ? (
@@ -1423,9 +1424,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   card: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4 },
-  premiumGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginTop: 8 },
-  premiumGroupTitle: { fontSize: 15, fontWeight: '700' },
-  premiumGroupSub: { fontSize: 12, marginTop: 1 },
   cardBody: { fontSize: 14, lineHeight: 20, paddingVertical: 12 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   statLabel: { fontSize: 15, flexShrink: 0 },

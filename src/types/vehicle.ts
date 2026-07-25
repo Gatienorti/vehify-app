@@ -369,6 +369,11 @@ export interface VehicleHistory {
   highlights?: string[];
   /** Loan/lien events — the lien must be released before a clean transfer. */
   lienRecords?: { date: string; detail: string | null }[];
+  /**
+   * The DMV paper trail — title/registration/lien/owner events split out of
+   * the service + lien records and merged per date (backend HistoryEvents).
+   */
+  adminRecords?: { date: string; events: string[]; lien: boolean }[];
   /** Per-VIN open-recall flag (model-level recalls live in openRecalls). */
   openRecallReported?: boolean | null;
 }

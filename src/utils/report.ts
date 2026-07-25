@@ -43,6 +43,25 @@ export function sentenceCase(text: string): string {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
+/**
+ * NHTSA's colon taxonomy → a human headline:
+ * "AIR BAGS:FRONTAL:PASSENGER SIDE:INFLATOR MODULE"
+ *   → "Air bags — frontal, passenger side, inflator module".
+ */
+export function recallComponentLabel(component: string): string {
+  const parts = component
+    .split(':')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return '';
+  const head = sentenceCase(parts[0]);
+  if (parts.length === 1) return head;
+  return `${head} — ${parts
+    .slice(1)
+    .map((p) => p.toLowerCase())
+    .join(', ')}`;
+}
+
 /** "2026-07-16" → "Jul 16" — compact seen-date for comp rows. */
 export function shortDate(isoDate: string): string {
   const d = new Date(`${isoDate}T00:00:00`);
