@@ -9,6 +9,7 @@ import { track } from '../config/analytics';
 import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
 import { useCredits } from '../hooks/useCredits';
+import { useCreditHeaderButton } from '../components/CreditBadge';
 import { PRICING, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
 import type { StackScreenProps } from '../types/navigation';
 
@@ -50,6 +51,7 @@ const HISTORY_INCLUDED: IncludedLine[] = [
 /** Premium upsell + mock purchase (spec §12, §16; Report Tiers v2). Real IAP arrives later. */
 export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
+  useCreditHeaderButton();
   const { vin, tier } = route.params;
   const { buy, redeem, buying } = usePurchaseReport();
 

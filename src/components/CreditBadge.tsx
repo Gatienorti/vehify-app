@@ -1,13 +1,13 @@
-import React from 'react';
+import React, { useLayoutEffect } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme';
 import { useCredits } from '../hooks/useCredits';
 
 /**
- * Chip showing the report-credit balance. ALWAYS visible — even at 0 for a
- * user who never held credits (owner decision 2026-07-20: the pill doubles as
- * awareness that credits exist at all). A zero balance shows in red as a
- * gentle "top up" cue.
+ * Chip showing the report-credit balance. Shown ONLY when the user actually
+ * holds credits — a zero (or not-yet-loaded) balance renders nothing, so a user
+ * who never bought credits never sees a "Credits: 0" chip anywhere.
  *
  * It only DISPLAYS balance — no link or steer to buy elsewhere (credits are
  * purchased on the website; App Store rules forbid pointing users there from
@@ -31,12 +31,14 @@ export default function CreditBadge({
   const { colors } = useTheme();
   const { balance } = useCredits();
 
+  // Nothing to show until the user holds at least one credit.
+  if (!balance) return null;
+
   const overlay = variant === 'overlay';
   const header = variant === 'header';
   const bg = overlay ? 'rgba(0,0,0,0.5)' : header ? 'transparent' : colors.surfaceAlt;
   const labelColor = overlay ? 'rgba(255,255,255,0.75)' : colors.textMuted;
-  const zeroColor = overlay ? '#FF6369' : colors.danger;
-  const valueColor = balance === 0 ? zeroColor : overlay ? '#FFFFFF' : colors.text;
+  const valueColor = overlay ? '#FFFFFF' : colors.text;
 
   return (
     <View style={[styles.chip, { backgroundColor: bg }, header && styles.chipHeader, style]}>
@@ -44,6 +46,24 @@ export default function CreditBadge({
       <Text style={[styles.value, { color: valueColor }]}>{balance}</Text>
     </View>
   );
+}
+
+/**
+ * Sets the nav-bar credit chip as `headerRight` — but ONLY when the user holds
+ * credits. Returning `null` from a headerRight function isn't enough on iOS 26:
+ * react-native-screens still mounts an (empty) right-header subview and iOS
+ * wraps it in its automatic glass pill, leaving a blank white round shape. So
+ * at zero we make `headerRight` genuinely absent (`undefined`) — no subview, no
+ * pill. Call this from any screen that wants the header chip.
+ */
+export function useCreditHeaderButton() {
+  const navigation = useNavigation();
+  const { balance } = useCredits();
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: balance > 0 ? () => <CreditBadge variant="header" /> : undefined,
+    });
+  }, [navigation, balance]);
 }
 
 const styles = StyleSheet.create({

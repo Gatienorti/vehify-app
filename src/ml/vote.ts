@@ -16,7 +16,10 @@ export interface VoteResult {
 /** Letter → the digit it's commonly misread from on plate fonts. */
 const DIGIT_TWINS: Record<string, string> = { Z: '2', S: '5', B: '8', G: '6' };
 
-export function voteOnReads(allReads: string[]): VoteResult | null {
+export function voteOnReads(
+  allReads: string[],
+  opts: { preferDigitTwins?: boolean } = {},
+): VoteResult | null {
   if (allReads.length === 0) return null;
 
   // Majority length wins; ties break toward the longer read.
@@ -56,7 +59,7 @@ export function voteOnReads(allReads: string[]): VoteResult | null {
     // The reverse misread (real Z read as 2) is rare — if any read saw the
     // digit twin at this position, trust the digit and pool the votes.
     const twin = DIGIT_TWINS[bestChar];
-    if (twin !== undefined && charCounts.has(twin)) {
+    if (opts.preferDigitTwins !== false && twin !== undefined && charCounts.has(twin)) {
       bestCharCount += charCounts.get(twin)!;
       bestChar = twin;
     }

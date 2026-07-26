@@ -1,5 +1,8 @@
 export interface Vehicle {
   vin: string;
+  /** Buyer-scoped plate context returned when this VIN originated from a plate lookup. */
+  plate?: string | null;
+  state?: string | null;
   year?: number;
   make?: string;
   model?: string;
@@ -140,13 +143,31 @@ export interface EvOwnership {
 }
 
 /**
- * Free result (tier 1) — vehicle IDENTITY ONLY: "is this the correct vehicle?".
- * Recalls, safety, fuel economy, complaints and value are paid-tier data
- * (Report Tiers v2) and live on the purchased report, not here.
+ * Free safety TEASER counts on the basic result — headline numbers only, a hook
+ * into the paid Buyer Report. The detail (which recalls, complaint trends, the
+ * Model Score, the analysis) stays paid. Absent on pre-teaser backends.
+ */
+export interface SafetyCounts {
+  recalls: number;
+  complaints: number;
+  /** Complaints that involved a crash (NHTSA ODI subset of `complaints`). */
+  crashes: number;
+  investigations: number;
+  /** Subset of `investigations` still OPEN — the heavier red flag. */
+  openInvestigations: number;
+}
+
+/**
+ * Free result (tier 1) — vehicle IDENTITY + a safety teaser: "is this the
+ * correct vehicle, and is the model clean?". The recall/complaint/investigation
+ * DETAIL, safety, fuel economy and value are paid-tier data (Report Tiers v2)
+ * and live on the purchased report — only the headline counts appear here.
  */
 export interface BasicReport {
   vehicle: Vehicle;
   summary?: string;
+  /** Headline safety counts (teaser). Absent on older backends. */
+  safetyCounts?: SafetyCounts;
   /** Transitional always-null key (pre-v2 backend); ignore. */
   estimatedValue?: number | null;
 }

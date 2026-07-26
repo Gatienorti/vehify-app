@@ -48,6 +48,32 @@ describe('findPlateInBlocks', () => {
     expect(found?.text).toBe('LXE1867');
   });
 
+  it('joins split Idaho plate chunks by geometry even when blocks arrive right-first', () => {
+    const right = { left: 150, top: 10, width: 180, height: 70 };
+    const left = { left: 20, top: 8, width: 80, height: 72 };
+    const found = findPlateInBlocks([
+      { text: 'AC392', bounding: right },
+      { text: '8B', bounding: left },
+    ]);
+    expect(found?.text).toBe('8BAC392');
+    expect(found?.region).toEqual({ left: 20, top: 8, width: 310, height: 72 });
+  });
+
+  it('recovers a spaced leading chunk on a second Idaho format', () => {
+    const found = findPlateInBlocks([
+      { text: 'WJ785', bounding: { left: 180, top: 20, width: 190, height: 80 } },
+      { text: '1A', bounding: { left: 30, top: 18, width: 90, height: 82 } },
+    ]);
+    expect(found?.text).toBe('1AWJ785');
+  });
+
+  it('keeps a complete spaced serial returned inside one OCR block', () => {
+    const found = findPlateInBlocks([
+      { text: 'B8 AC392', bounding: { left: 20, top: 10, width: 320, height: 90 } },
+    ]);
+    expect(found?.text).toBe('B8AC392');
+  });
+
   it('returns null when no plate-like text exists', () => {
     expect(findPlateInBlocks([block('DEALERSHIP AUTO', ['DEALERSHIP AUTO'])])).toBeNull();
     expect(findPlateInBlocks([])).toBeNull();

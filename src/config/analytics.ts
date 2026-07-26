@@ -16,6 +16,7 @@ export type AnalyticsEvent =
   | 'vin_detected'
   | 'scan_confirmed'
   | 'scan_torch_toggled'
+  | 'scan_mode_changed'
   | 'manual_entry_opened'
   | 'manual_plate_entered'
   | 'manual_vin_entered'

@@ -15,6 +15,8 @@ interface Props {
    */
   mask?: boolean;
   lastVerified?: string;
+  /** Plate lookup that produced this vehicle identity, shown below the VIN. */
+  matchedPlate?: { plate: string; state?: string };
   /** Hide the spec chips when the screen shows a full details table instead. */
   showSpecs?: boolean;
 }
@@ -28,9 +30,12 @@ export default function VehicleCard({
   showVin = true,
   mask = false,
   lastVerified,
+  matchedPlate,
   showSpecs = true,
 }: Props) {
   const { colors, radius, spacing } = useTheme();
+  const displayedPlate =
+    matchedPlate ?? (vehicle.plate ? { plate: vehicle.plate, state: vehicle.state ?? undefined } : undefined);
   // Identity specs as compact chips — carries "verified" better than prose.
   const specs = [
     vehicle.bodyStyle,
@@ -59,6 +64,12 @@ export default function VehicleCard({
       {showVin ? (
         <Text style={[styles.meta, { color: colors.textMuted }]} selectable>
           VIN: {mask ? maskVin(vehicle.vin) : vehicle.vin}
+        </Text>
+      ) : null}
+      {displayedPlate ? (
+        <Text style={[styles.meta, { color: colors.textMuted }]}>
+          {displayedPlate.plate}
+          {displayedPlate.state ? ` · ${displayedPlate.state}` : ''}
         </Text>
       ) : null}
       {lastVerified ? (

@@ -31,10 +31,15 @@ import VehicleCard from '../components/VehicleCard';
 import ScoreBadge from '../components/ScoreBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { useGetReportQuery, useRefreshReportMutation, useRetryReportMutation } from '../services/api';
+import {
+  useGetReportQuery,
+  useRefreshReportMutation,
+  useRetryReportMutation,
+} from '../services/api';
 import { PurchaseCancelledError, purchaseThroughStore } from '../hooks/usePurchaseReport';
 import { PRICING, REPORT_REFRESH_PRODUCT_ID, creditCostFor, creditLabel, formatUsd } from '../config/pricing';
 import { useCredits } from '../hooks/useCredits';
+import { useCreditHeaderButton } from '../components/CreditBadge';
 import { BUILDING_REPORT_MESSAGES, REPORT_OPEN_MESSAGES } from '../config/loadingMessages';
 import { isReportReady } from '../types/api';
 import {
@@ -378,6 +383,7 @@ function dedupeConditionFlags(
 /** Purchased report — Buyer's Analysis, plus Vehicle History on the complete tier (spec §12–13). */
 export default function PremiumReportScreen({ navigation, route }: Props) {
   const { colors, spacing } = useTheme();
+  useCreditHeaderButton();
   const { vin, reportId, tier } = route.params;
   // The backend builds report content on a queue: until it finishes, GET
   // returns {status:'generating'} and we poll — the loading overlay stays up

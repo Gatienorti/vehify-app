@@ -6,11 +6,11 @@ import FloatingTabBar from '../components/FloatingTabBar';
 import HistoryScreen from '../screens/HistoryScreen';
 import ScanScreen from '../screens/ScanScreen';
 import AccountScreen from '../screens/AccountScreen';
+import ScanReviewScreen from '../screens/ScanReviewScreen';
 import VehicleMatchScreen from '../screens/VehicleMatchScreen';
 import BasicResultScreen from '../screens/BasicResultScreen';
 import PremiumUpsellScreen from '../screens/PremiumUpsellScreen';
 import PremiumReportScreen from '../screens/PremiumReportScreen';
-import CreditBadge from '../components/CreditBadge';
 import { track } from '../config/analytics';
 import type { RootStackParamList, TabParamList } from '../types/navigation';
 
@@ -50,23 +50,25 @@ export function RootNavigator() {
       }}
     >
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
-      <Stack.Screen name="VehicleMatch" component={VehicleMatchScreen} options={{ title: 'Confirm vehicle' }} />
-      {/* Credit chip in the nav bar — transparent so iOS's own glass pill is
-          the single container (no double-pill). Self-hides unless ever held. */}
+      <Stack.Screen name="ScanReview" component={ScanReviewScreen} options={{ title: 'Confirm' }} />
+      <Stack.Screen name="VehicleMatch" component={VehicleMatchScreen} options={{ title: 'Plate lookup' }} />
+      {/* Credit chip in the nav bar is set per-screen via useCreditHeaderButton
+          so it's genuinely absent at zero balance (an empty headerRight still
+          leaves iOS's glass pill behind — a blank white round shape). */}
       <Stack.Screen
         name="BasicResult"
         component={BasicResultScreen}
-        options={{ title: 'Basic check', headerRight: () => <CreditBadge variant="header" /> }}
+        options={{ title: 'Basic check' }}
       />
       <Stack.Screen
         name="PremiumUpsell"
         component={PremiumUpsellScreen}
-        options={{ title: 'Full report', headerRight: () => <CreditBadge variant="header" /> }}
+        options={{ title: 'Full report' }}
       />
       <Stack.Screen
         name="PremiumReport"
         component={PremiumReportScreen}
-        options={{ title: 'Vehicle history', headerRight: () => <CreditBadge variant="header" /> }}
+        options={{ title: 'Vehicle history' }}
       />
     </Stack.Navigator>
   );

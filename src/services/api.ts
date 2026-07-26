@@ -59,17 +59,44 @@ export const api = createApi({
   endpoints: (builder) => ({
     lookupVin: builder.mutation<VinLookupResponse, VinLookupRequest>({
       query: (body) => ({ url: '/lookup/vin', method: 'POST', body }),
-      // The backend records this lookup in the server history — refresh the feed.
-      invalidatesTags: ['History'],
+      // The backend records this lookup in server history and may attach a
+      // previously used plate to the buyer-scoped Vehicle response.
+      invalidatesTags: (result) => [
+        'History',
+        ...(result?.vehicle.vin
+          ? [{ type: 'VehicleBasic' as const, id: result.vehicle.vin }]
+          : []),
+      ],
     }),
 
     lookupPlate: builder.mutation<PlateLookupResponse, PlateLookupRequest>({
       query: (body) => ({ url: '/lookup/plate', method: 'POST', body }),
-      invalidatesTags: ['History'],
+      // Plate/state now live directly on Basic + paid report Vehicle payloads.
+      // Expire older VIN/report responses so opening either screen refetches
+      // the newly attached plate instead of painting stale RTK Query data.
+      invalidatesTags: (result) => [
+        'History',
+        'Report',
+        ...(result?.vehicle.vin
+          ? [{ type: 'VehicleBasic' as const, id: result.vehicle.vin }]
+          : []),
+      ],
     }),
 
     refreshPlate: builder.mutation<PlateLookupResponse, PlateRefreshRequest>({
       query: (body) => ({ url: '/lookup/plate/refresh', method: 'POST', body }),
+      invalidatesTags: (result) => [
+        'History',
+        'Report',
+        ...(result?.vehicle.vin
+          ? [{ type: 'VehicleBasic' as const, id: result.vehicle.vin }]
+          : []),
+      ],
+    }),
+
+    // Remaining free plate lookups for this device/account (shown on confirm).
+    getPlateQuota: builder.query<{ remaining: number; signedIn: boolean }, void>({
+      query: () => '/lookup/plate/quota',
     }),
 
     getVehicleBasic: builder.query<BasicVehicleResponse, string>({
@@ -219,6 +246,7 @@ export const {
   useLookupVinMutation,
   useLookupPlateMutation,
   useRefreshPlateMutation,
+  useGetPlateQuotaQuery,
   useGetVehicleBasicQuery,
   useStartPurchaseMutation,
   useConfirmPurchaseMutation,

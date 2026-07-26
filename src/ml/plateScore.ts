@@ -68,49 +68,103 @@ export function isStateText(cleaned: string): boolean {
   return FILTER_SUBSTRINGS.some((s) => cleaned.includes(s));
 }
 
-type Token = { text: string; region: OcrBounding };
+type Token = { text: string; region: OcrBounding; group: number; order: number };
 
 function extractTokens(blocks: OcrBlockLike[]): Token[] {
   const tokens: Token[] = [];
+  let group = 0;
+  let order = 0;
   for (const block of blocks) {
     if (block.lines && block.lines.length > 0) {
       for (const line of block.lines) {
         for (const part of line.text.split(/\s+/)) {
-          if (part.length > 0) tokens.push({ text: part, region: line.bounding });
+          if (part.length > 0) tokens.push({ text: part, region: line.bounding, group, order: order++ });
         }
+        group++;
       }
     } else {
-      for (const part of block.text.split(/[\n\r\s]+/)) {
-        if (part.length > 0) tokens.push({ text: part, region: block.bounding });
+      for (const rawLine of block.text.split(/[\n\r]+/)) {
+        for (const part of rawLine.split(/\s+/)) {
+          if (part.length > 0) tokens.push({ text: part, region: block.bounding, group, order: order++ });
+        }
+        group++;
       }
     }
   }
   return tokens;
 }
 
+function unionRegion(a: OcrBounding, b: OcrBounding): OcrBounding {
+  const left = Math.min(a.left, b.left);
+  const top = Math.min(a.top, b.top);
+  const right = Math.max(a.left + a.width, b.left + b.width);
+  const bottom = Math.max(a.top + a.height, b.top + b.height);
+  return { left, top, width: right - left, height: bottom - top };
+}
+
+function horizontallyAdjacent(a: Token, b: Token): boolean {
+  const aCenterY = a.region.top + a.region.height / 2;
+  const bCenterY = b.region.top + b.region.height / 2;
+  const maxHeight = Math.max(a.region.height, b.region.height);
+  if (Math.abs(aCenterY - bCenterY) > maxHeight * 0.55) return false;
+
+  const left = a.region.left <= b.region.left ? a : b;
+  const right = left === a ? b : a;
+  const gap = right.region.left - (left.region.left + left.region.width);
+  // Allow a modest overlap (OCR boxes are noisy) and a large visual space like
+  // Idaho's "8B  AC392", but never join distant text elsewhere in the frame.
+  return gap >= -maxHeight * 0.35 && gap <= maxHeight * 2.5;
+}
+
 /**
  * Best plate candidate in a set of OCR blocks, or null. Tries single tokens
- * and adjacent-token joins ("LXE" + "1867" → "LXE1867"); drops state branding
- * text unless nothing else qualifies.
+ * and same-row joins ("8B" + "AC392" → "8BAC392"), even when ML Kit returns
+ * right-hand blocks first. Joined candidates use the union crop region so the
+ * later tight OCR passes retain the whole plate.
  */
 export function findPlateInBlocks(blocks: OcrBlockLike[]): PlateCandidate | null {
   const tokens = extractTokens(blocks);
   const candidates: PlateCandidate[] = [];
 
-  const push = (raw: string, region: OcrBounding) => {
+  const push = (raw: string, region: OcrBounding, bonus = 0) => {
     const cleaned = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const score = scorePlateText(cleaned);
-    if (score > 0) candidates.push({ text: cleaned, score, region });
+    if (score > 0) candidates.push({ text: cleaned, score: score + bonus, region });
   };
 
+  // ML Kit often returns a spaced serial as one block but separate line/token
+  // pieces ("8R AC392"). Preserve the whole block as a candidate before
+  // considering fragments; scorePlateText removes the visual whitespace.
+  for (const block of blocks) {
+    // When ML Kit intentionally grouped multiple spaced pieces into one
+    // plate-sized block, favor that complete region over a high-scoring suffix
+    // such as AC392. Non-plate slogans remain outside the 5–8 char score gate.
+    const pieces = block.text.trim().split(/\s+/).filter(Boolean);
+    push(block.text, block.bounding, pieces.length >= 2 ? 6 : 0);
+  }
   for (const token of tokens) push(token.text, token.region);
   for (let i = 0; i < tokens.length - 1; i++) {
-    push(tokens[i]!.text + tokens[i + 1]!.text, tokens[i]!.region);
+    for (let j = i + 1; j < tokens.length; j++) {
+      const a = tokens[i]!;
+      const b = tokens[j]!;
+      if (a.group === b.group) {
+        const ordered = a.order <= b.order ? [a, b] : [b, a];
+        push(ordered[0].text + ordered[1].text, unionRegion(a.region, b.region));
+      } else if (horizontallyAdjacent(a, b)) {
+        const ordered = a.region.left <= b.region.left ? [a, b] : [b, a];
+        push(ordered[0].text + ordered[1].text, unionRegion(a.region, b.region));
+      }
+    }
   }
 
   const filtered = candidates.filter((c) => !isStateText(c.text));
   const pool = filtered.length > 0 ? filtered : candidates;
-  pool.sort((a, b) => b.score - a.score);
+  pool.sort(
+    (a, b) =>
+      b.score - a.score ||
+      b.text.length - a.text.length ||
+      b.region.width - a.region.width,
+  );
 
   const best = pool[0];
   return best && best.score >= 4 ? best : null;

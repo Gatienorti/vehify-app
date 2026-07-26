@@ -74,11 +74,11 @@ Complete History is an **upgrade-only** path — the user buys Buyer's Analysis 
 
 ## Core Flows
 
-### Scan Flow (spec §6)
-1. Tap SCAN → request camera permission (first time only) → live camera.
-2. On-device auto-detect (barcode=VIN, plate-text=plate — see *Scan auto-detect* below), **no network calls**.
-3. Detection stable ~0.5–1s → freeze frame, show detected text.
-4. User taps **Search** → *now* call backend. Offer **Edit** if the read is wrong.
+### Scan Flow (spec §6) — TAP-TO-CAPTURE
+1. Tap SCAN → request camera permission (first time only) → live camera, ready immediately (no "start scanning" step).
+2. **Plate | VIN tabs** (default Plate) pick what the shutter reads; **live barcode detection stays on in both** (a VIN barcode is caught on either tab, no photo needed).
+3. Tap **Capture** → a brief AF settle, then a burst of high-res reads (plate mode) or a `scanFromURLAsync` still-barcode read (VIN mode). The editable confirm sheet ALWAYS opens — even on a weak/empty read (empty → type) — so a tap never feels like "nothing happened."
+4. User confirms in the sheet → *now* call backend. Editable if the read is wrong.
 5. `Can't scan? Type instead` → manual-entry bottom sheet (VIN or Plate).
 
 ### Manual Entry (spec §7)
@@ -86,25 +86,25 @@ Complete History is an **upgrade-only** path — the user buys Buyer's Analysis 
 - **Plate**: plate number + **state dropdown (required)** for plate→VIN.
 
 ### On-device scanning (Phase 4, built) — `src/ml/`
-Google **ML Kit text recognition** (`react-native-mlkit-ocr`) runs **on-device** (never server-side — that's the scan promise). A prior self-trained ONNX pipeline was removed — it produced garbage reads; don't reintroduce it. Pipeline (`readPlateOnce` in `plateProcessor.ts`, one call per 500ms loop tick):
-1. `expo-camera` photo (1080p `pictureSize`, fast) → **normalize-first**: resize to 900w in the SAME `manipulateAsync` call as the crop. Normalizing bakes the EXIF rotation into pixels — cropping the raw photo crops the unrotated sensor buffer and lands in the wrong place (hard-won bug). Crop = the on-screen `ScannerFrame` region mapped via `frameCrop.ts` (cover-mode math, `Math.min` scale).
+Google **ML Kit text recognition** (`react-native-mlkit-ocr`) runs **on-device** (never server-side — that's the scan promise). A prior self-trained ONNX pipeline was removed — it produced garbage reads; don't reintroduce it. Pipeline (`readPlateOnce` in `plateProcessor.ts`, now fired **per shutter tap in a burst of ~4**, not a continuous loop). Tap-capture passes `{ highRes: true }` → bigger normalize width (1400 vs 900), bigger per-region upscale (480 vs 300), more passes (10 vs 6); the camera captures at the largest supported `pictureSize` (queried on mount). Steps:
+1. `expo-camera` photo → **normalize-first**: resize to the normalize width in the SAME `manipulateAsync` call as the crop. Normalizing bakes the EXIF rotation into pixels — cropping the raw photo crops the unrotated sensor buffer and lands in the wrong place (hard-won bug). Crop = the on-screen `ScannerFrame` region mapped via `frameCrop.ts` (cover-mode math, `Math.min` scale).
 2. One locate OCR pass. `findVinInBlocks` (`vinDetect.ts`) first — a 17-char VIN wins immediately (free route). VIN candidates are **per-line only** (never stitch lines: "TEXAS"+"BC5X489"+"TEXAS" = 17 chars) and must pass the **ISO 3779 check digit** (`hasValidCheckDigit` in `utils/vin.ts`). Else `findPlateInBlocks` locates the most plate-like token + bounding region (`plateScore.ts`).
-3. **6 tight re-crops** (varied padding, upscaled to 300px) around the region → per-character **consensus voting** (`vote.ts`, digit-twin rule: 2/Z, 5/S, 8/B, 6/G → digit wins; I/O/Q→1/0/0 since US plates never issue them). Confirm sheet opens after **2 consecutive confident ticks** agree.
+3. **6–10 tight re-crops** (varied padding, upscaled) around the region → per-character **consensus voting** (`vote.ts`, digit-twin rule: 2/Z, 5/S, 8/B, 6/G → digit wins; I/O/Q→1/0/0 since US plates never issue them). The burst's per-photo votes are voted again across the ~4 shots; the confirm sheet opens with the winner (or empty).
 4. **4 wide vertical re-crops** (upscaled to 500px, concurrent with step 3, skipped once a state has 2 votes) → state detection (`stateDetect.ts`): exact name → fuzzy (Levenshtein ≤2) → unambiguous 2-letter code → slogans (`STATE_SLOGANS`, "EMPIRE STATE" → NY). Most-voted wins; null → user picks in the confirm sheet.
 
 `stateDetect.ts` / `plateScore.ts` / `vote.ts` / `vinDetect.ts` / `frameCrop.ts` are pure and unit-tested (`src/ml/__tests__/`).
 
-**One unified scan (no plate/VIN mode toggle).** `ScanScreen` runs all detectors at once; priority **barcode → VIN text → plate**:
-- **Barcode/QR → VIN (free).** Plates are never barcoded, so any barcode is a VIN. `barcodeScannerSettings` watches QR (Tesla door jamb), DataMatrix, PDF417, Code39/128 on the live preview — no photo needed. `extractVinFromBarcode` digs the VIN out of any payload shape. Opens editable **`VinConfirmSheet`**.
-- **VIN text → VIN (free).** Door-jamb printed VIN via the locate pass (step 2 above).
-- **Plate loop → Plate (FREE).** Opens **`ScanConfirmSheet`** — editable plate + state picker + explicit `Search plate — free` confirm. Manual plate entry (`ManualEntrySheet`) routes through the same sheet.
-- Camera UX: preview live on tab arrival (scan loop only after "Start scanning"), pinch-to-zoom (gesture wraps the whole screen — wrapping only `CameraView` gets buried under the UI), torch toggle, `autofocus="off"` (expo-camera semantics are inverted: "on" = focus-once-then-LOCK, "off" = continuous — a scanner needs continuous).
+**Tap-capture with Plate | VIN tabs** (the old "unified, no toggle" note is superseded — a shutter needs to know what to read). Live barcode detection stays on in BOTH tabs, so nothing is trapped:
+- **Barcode/QR → VIN (free), passive in both tabs.** Plates are never barcoded, so any barcode is a VIN. `barcodeScannerSettings` watches QR (Tesla door jamb), DataMatrix, PDF417, Code39/128 on the live preview — fires the instant one is in frame, no shutter. `extractVinFromBarcode` digs the VIN out of any payload shape. Opens editable **`VinConfirmSheet`**.
+- **VIN tab shutter → barcode, then TEXT OCR.** `Camera.scanFromURLAsync` scans the frame crop (barcode is larger/upscaled there) then the full still. If no VIN barcode (e.g. a registration doc / door-jamb label where the VIN is only printed text), `readVinFromImage` OCRs it — **safe now because it's a deliberate VIN capture AND every candidate must pass the ISO 3779 check digit** (a misread almost never does; the user confirms on the review page). This is the narrow, validated return of text-VIN OCR — it stays OFF the plate path (where document text caused garbage). Note: many state stickers encode the VIN in a PDF417 2D barcode — decode that when it's legible (glare/size permitting) for an error-free read.
+- **Plate tab shutter → burst OCR.** Opens **`ScanConfirmSheet`** — editable plate + state picker + explicit `Search plate — free` confirm, always (even empty). Manual plate entry (`ManualEntrySheet`) routes through the same sheet.
+- Camera UX: preview live on tab arrival, pinch-to-zoom (gesture wraps the whole screen — wrapping only `CameraView` gets buried under the UI), torch toggle (hidden), `autofocus="off"` (expo-camera semantics are inverted: "on" = focus-once-then-LOCK, "off" = continuous — a scanner needs continuous; a ~300ms settle precedes each capture).
 - Requires an **Expo dev client** (`npx expo run:ios --device`, not Expo Go); iOS simulators have no camera. ML Kit reads garbage off monitors/screens (moiré) — test against real plates or paper printouts.
 
 ### Lookup → Confirm → Basic → Upsell (spec §8, §10–12)
 1. **VIN lookup** (free): decode via NHTSA vPIC + recalls → basic summary.
 2. **Plate lookup**: cache-first; always show a **"Is this the correct vehicle?"** confirmation. From cache, "No, refresh" can be free; from live API, steer to "Enter VIN instead" (don't allow unlimited free refreshes).
-3. **Basic result** (free): YMM, trim, specs, open recalls, basic summary.
+3. **Basic result** (free): YMM, trim, specs, basic summary, plus a **safety teaser** — headline NHTSA counts only (complaints · open recalls · federal investigations) as a hook into the paid Buyer Report. Counts only; the *detail/analysis* stays paid. Counts ride on the basic response as `safetyCounts` (`BasicVehicleResource` / `src/types/vehicle.ts` `SafetyCounts`); complaints + recalls were already cached, investigations were newly added to the free VIN build.
 4. **Buyer's Analysis upsell**: `Get Buyer Report — $1.99`. One tap, no input sheet (the odometer/asking-price sheet was removed with the valuation move). IAP → report with **Model Score** (score + reasons, never a bare number; green 80+, yellow 60–79, red <60), recalls/complaints/safety, comparable listings, maintenance outlook, recommendation. No valuation at this tier — that and the per-VIN **Buy Score** are the Complete-History upgrade.
 5. **Complete History upgrade**: from the Buyer's Analysis report, `Add Premium Report — +$2.99` → same report screen now also shows market value + suggested offer + negotiation and accident/title/theft/odometer/owners. One shared `PremiumUpsell` screen + one shared `PremiumReport` screen, both parameterized by `tier`.
 

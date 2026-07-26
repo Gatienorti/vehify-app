@@ -8,8 +8,13 @@ import { LinearGradient } from 'expo-linear-gradient';
  * door-jamb VIN label strip (detection is automatic — no plate/VIN mode).
  */
 
-const FRAME_W = 320;
-const FRAME_H = 180;
+// One frame for both modes: wide enough for a license plate and tall enough
+// for a square VIN code (Tesla QR / DataMatrix). Exported so the review page
+// matches the captured crop's aspect exactly (no letterboxing).
+export const FRAME_DIMS = {
+  plate: { w: 340, h: 180 },
+  vin: { w: 340, h: 180 },
+} as const;
 
 const CORNER = 34;
 const CORNER_THICKNESS = 4;
@@ -18,7 +23,14 @@ function Corner({ style }: { style: object }) {
   return <View style={[styles.corner, style]} />;
 }
 
-export default function ScannerFrame({ paused = false }: { paused?: boolean }) {
+export default function ScannerFrame({
+  paused = false,
+  variant = 'plate',
+}: {
+  paused?: boolean;
+  variant?: 'plate' | 'vin';
+}) {
+  const { w: FRAME_W, h: FRAME_H } = FRAME_DIMS[variant];
   const [anim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {

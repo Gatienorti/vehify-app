@@ -31,7 +31,8 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-svg": "15.15.4",
-    "react-redux": "^9.3.0"
+    "react-redux": "^9.3.0",
+    "vehify-plate-detector": "file:./modules/vehify-plate-detector"
   },
   "devDependencies": {
     "@testing-library/react-native": "^14.0.1",

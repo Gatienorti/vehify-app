@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -7,20 +7,32 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { setStatusBarStyle } from 'expo-status-bar';
 import {
   CameraView,
+  scanFromURLAsync,
   useCameraPermissions,
   type BarcodeScanningResult,
 } from 'expo-camera';
 import { Keyboard, Zap, ZapOff } from 'lucide-react-native';
 import PrimaryButton from '../components/PrimaryButton';
-import ManualEntrySheet from '../components/ManualEntrySheet';
-import ScanConfirmSheet from '../components/ScanConfirmSheet';
-import VinConfirmSheet from '../components/VinConfirmSheet';
+import LoadingOverlay from '../components/LoadingOverlay';
+import { SCANNING_MESSAGES, SCANNING_VIN_MESSAGES } from '../config/loadingMessages';
 import ScannerFrame from '../components/ScannerFrame';
 import CreditBadge from '../components/CreditBadge';
 import { track } from '../config/analytics';
 import { extractVinFromBarcode } from '../utils/vin';
-import { discardShot, readPlateOnce } from '../ml/plateProcessor';
-import { voteOnReads, isAcceptableVote } from '../ml/vote';
+import {
+  capturePlatePhoto,
+  cropToFrame,
+  discardPreparedPlate,
+  discardShot,
+  preparePlatePhoto,
+  readPreparedPlate,
+  readVinFromImage,
+  type CapturedPlatePhoto,
+  type PreparedPlatePhoto,
+  type SingleRead,
+} from '../ml/plateProcessor';
+import { voteOnReads } from '../ml/vote';
+import { resolvePlateForState } from '../ml/plateFormat';
 import type { FrameLayout } from '../ml/frameCrop';
 import type { TabScreenProps } from '../types/navigation';
 
@@ -31,64 +43,28 @@ const VIN_BARCODES = ['code39', 'code128', 'datamatrix', 'pdf417', 'qr'] as cons
 // Torch button hidden for now — flip to true to bring the flash toggle back.
 const SHOW_TORCH = false as boolean;
 
-export default function ScanScreen({ navigation, route }: Props) {
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [scanning, setScanning] = useState(false);
+type ScanMode = 'plate' | 'vin';
 
-  // Pending confirmations (one or the other, never both)
-  const [pendingPlate, setPendingPlate] = useState<{ plate: string; state: string | null } | null>(null);
-  const [pendingVin, setPendingVin] = useState<string | null>(null);
+export default function ScanScreen({ navigation }: Props) {
+  // Which target the shutter reads. Live barcode detection stays on in BOTH
+  // modes, so a VIN barcode is never missed while on the Plate tab.
+  const [mode, setMode] = useState<ScanMode>('plate');
+  // A capture (burst) is in flight — shows the "Reading…" loader.
+  const [capturing, setCapturing] = useState(false);
 
   const readingRef = useRef(false);
+  // Synchronous lock: React state does not update until the next render, so it
+  // cannot by itself stop two taps in the same frame from starting two photos.
+  const captureInFlightRef = useRef(false);
+  const permissionRequestedRef = useRef(false);
   const camRef = useRef<CameraView>(null);
   const frameContainerRef = useRef<View>(null);
   const previewRef = useRef<View>(null);
   const frameMeasureRef = useRef<FrameLayout | null>(null);
 
-  // Rolling buffer of plate reads from fresh photos, voted once enough agree.
+  // Reads accumulated during a capture burst; voted once the burst finishes.
   const plateReadsRef = useRef<string[]>([]);
-  // Latest tick's frame shot; on detection it's promoted to the freeze-frame
-  // shown over the scanner (spec §6: "freeze frame, show detected text").
-  const lastShotRef = useRef<string | null>(null);
-  const [frozenShot, setFrozenShot] = useState<string | null>(null);
-  // Full-preview freeze for barcode hits (no frame crop exists for those).
-  const [frozenFull, setFrozenFullState] = useState<string | null>(null);
-  const setFrozenFull = (uri: string | null) => {
-    setFrozenFullState((prev) => {
-      if (prev && prev !== uri) discardShot(prev);
-      return uri;
-    });
-  };
-  const keepShot = (uri: string | null) => {
-    if (lastShotRef.current && lastShotRef.current !== uri) discardShot(lastShotRef.current);
-    lastShotRef.current = uri;
-  };
-  const freezeShot = () => {
-    setFrozenShot((prev) => {
-      if (prev) discardShot(prev);
-      const shot = lastShotRef.current;
-      lastShotRef.current = null;
-      return shot;
-    });
-  };
-  // Stable (setState + refs only) so callbacks can depend on it without churn.
-  const unfreezeShot = useCallback(() => {
-    setFrozenShot((prev) => {
-      if (prev) discardShot(prev);
-      return null;
-    });
-    setFrozenFullState((prev) => {
-      if (prev) discardShot(prev);
-      return null;
-    });
-  }, []);
-  const frozen = frozenShot !== null || frozenFull !== null;
   const stateVotesRef = useRef<Map<string, number>>(new Map());
-  // Last time a VIN-less barcode decoded. Streams of those mean the camera is
-  // on a DOCUMENT (stickers/registrations are covered in barcodes; license
-  // plates never are) — plate proposals from document text ("M0T0R",
-  // "2008BMW") are suppressed while that signal is fresh.
-  const docBarcodeAtRef = useRef(0);
   const clearReads = () => { plateReadsRef.current = []; stateVotesRef.current.clear(); };
 
   // Pinch-to-zoom for the camera (0 = none … 1 = max). Helps read a distant plate.
@@ -98,47 +74,38 @@ export default function ScanScreen({ navigation, route }: Props) {
 
   const [permission, requestPermission] = useCameraPermissions();
   const isFocused = useIsFocused();
-  // Live viewfinder shows whenever we're on the tab with permission.
+  // Live viewfinder shows whenever we're on the tab with permission. There's no
+  // "start scanning" step anymore — you land ready, aim, and tap Capture.
   const previewActive = isFocused && (permission?.granted ?? false);
-  // The OCR loop only runs once the user has started scanning.
-  const cameraActive = previewActive && scanning;
+  // Reused as the "a capture/detection has claimed the flow" guard so a live
+  // barcode can't race a shutter burst (or vice versa).
   const handledRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
       setStatusBarStyle('light');
+      // Ready to capture again on every return (e.g. back from ScanReview).
       handledRef.current = false;
+      permissionRequestedRef.current = false;
       return () => {
         setStatusBarStyle('dark');
-        setScanning(false);
-        setPendingPlate(null);
-        setPendingVin(null);
         setTorch(false);
         setZoom(0);
       };
-    }, [setScanning, setPendingPlate, setPendingVin, setTorch, setZoom]),
+    }, [setTorch, setZoom]),
   );
-
-  // A rejected plate match steers here with the manual VIN sheet open
-  // (ManualEntrySheet defaults to its VIN tab). Render-phase adjustment (per
-  // React docs) + param cleared in an effect so re-visits don't re-open it.
-  const wantsVinEntry = route.params?.openVinEntry === true;
-  const [vinEntryConsumed, setVinEntryConsumed] = useState(false);
-  if (wantsVinEntry && !vinEntryConsumed) {
-    setVinEntryConsumed(true);
-    setSheetOpen(true);
-  }
-  if (!wantsVinEntry && vinEntryConsumed) {
-    setVinEntryConsumed(false);
-  }
-  useEffect(() => {
-    if (wantsVinEntry) navigation.setParams({ openVinEntry: undefined });
-  }, [wantsVinEntry, navigation]);
 
   // Ask for camera permission on arrival so the viewfinder is live immediately
   // (reaching this tab is the user tapping SCAN — the spec's permission trigger).
   useEffect(() => {
-    if (isFocused && permission && !permission.granted && permission.canAskAgain) {
+    if (
+      isFocused &&
+      permission &&
+      !permission.granted &&
+      permission.canAskAgain &&
+      !permissionRequestedRef.current
+    ) {
+      permissionRequestedRef.current = true;
       track('camera_permission_requested');
       void requestPermission().then((res) => {
         track(res.granted ? 'camera_permission_granted' : 'camera_permission_denied');
@@ -146,32 +113,18 @@ export default function ScanScreen({ navigation, route }: Props) {
     }
   }, [isFocused, permission, requestPermission]);
 
-  const startScanning = async () => {
-    track('scan_button_tapped');
-    let granted = permission?.granted ?? false;
-    if (!granted) {
-      const res = await requestPermission();
-      granted = res.granted;
-      if (!granted) {
-        if (permission && !permission.canAskAgain) void Linking.openSettings();
-        return;
-      }
-    }
-    handledRef.current = false;
-    setScanning(true);
-  };
-
-  const stopScanning = () => {
-    setScanning(false);
-    clearReads();
-    keepShot(null);
-    unfreezeShot();
-    setTorch(false);
-    handledRef.current = false;
+  // Ensure camera permission before a capture; returns whether we may proceed.
+  const ensurePermission = async (): Promise<boolean> => {
+    if (permission?.granted) return true;
+    track('camera_permission_requested');
+    const res = await requestPermission();
+    track(res.granted ? 'camera_permission_granted' : 'camera_permission_denied');
+    return res.granted;
   };
 
   // Measure the ScannerFrame AND the camera preview box once the camera is
-  // live — both are needed to map the frame to camera-image pixels.
+  // live — both are needed to map the frame to camera-image pixels. Re-runs on
+  // mode change since the plate/VIN frames are different sizes.
   useEffect(() => {
     if (!previewActive) return;
     const timer = setTimeout(() => {
@@ -188,108 +141,251 @@ export default function ScanScreen({ navigation, route }: Props) {
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [previewActive]);
+  }, [previewActive, mode]);
 
-  // Unified scan loop: every tick takes one fresh photo and auto-detects.
-  // Plate reads accumulate until 2 confident ticks agree, then the confirm
-  // sheet opens. VINs are barcode/QR-only (onBarcodeScanned on the live
-  // preview) — text-VIN OCR is retired: dense documents (registration cards)
-  // produce checksum-lucky junk that no consensus rule reliably kills.
-  useEffect(() => {
-    if (!cameraActive) return;
+  // Shutter — PLATE mode. A burst of high-res reads, voted, always ending in the
+  // (editable) confirm sheet — even on a weak/empty read, so a tap never feels
+  // like "nothing happened." The burst keeps the multi-shot consensus that made
+  // the old continuous loop accurate; the user just sees one tap.
+  const PLATE_BURST = 4;
+  const capturePlate = async () => {
     clearReads();
-    const id = setInterval(async () => {
-      if (readingRef.current || handledRef.current) return;
-      if (!camRef.current) return;
+    const photos: CapturedPlatePhoto[] = [];
+    const prepared: PreparedPlatePhoto[] = [];
+    let shot: string | null = null;
+    let shotPlateDetected = false;
+    let previousRead: SingleRead | null = null;
+    try {
+      // Capture first, OCR second. This keeps all frames close together in
+      // time instead of pausing for dozens of OCR passes between photos.
       readingRef.current = true;
-      try {
-        // Stop reading state (the extra wide crop) once one has 2+ votes —
-        // keeps steady-state ticks plate-only and fast.
+      for (let i = 0; i < PLATE_BURST && !handledRef.current; i++) {
+        if (!camRef.current) break;
+        try {
+          const photo = await capturePlatePhoto(camRef.current, true);
+          if (photo) photos.push(photo);
+        } catch (e) {
+          if (__DEV__) console.error('[ScanScreen] plate photo error:', e);
+        }
+      }
+      readingRef.current = false;
+
+      // Run only the inexpensive crop + locate pass on every frame, then rank
+      // before spending the multi-pass OCR budget.
+      for (const photo of photos) {
+        try {
+          prepared.push(
+            await preparePlatePhoto(photo, frameMeasureRef.current, { highRes: true }),
+          );
+        } catch (e) {
+          if (__DEV__) console.error('[ScanScreen] plate prepare error:', e);
+        }
+      }
+      prepared.sort((a, b) => b.qualityScore - a.qualityScore);
+
+      for (let i = 0; i < prepared.length && !handledRef.current; i++) {
         let stateLocked = false;
         for (const count of stateVotesRef.current.values()) {
           if (count >= 2) { stateLocked = true; break; }
         }
-        const read = await readPlateOnce(camRef.current, frameMeasureRef.current, { readState: !stateLocked });
-        if (!read) return;
-        keepShot(read.photoUri);
-
-        if (read.state) {
-          stateVotesRef.current.set(read.state, (stateVotesRef.current.get(read.state) ?? 0) + 1);
-        }
-        // Each photo already yields a within-photo vote of ~9 reads; only trust
-        // the confident ones, then confirm across just 2 ticks (guards against
-        // a transient misread while the user pans across other plates).
-        if (!read.confident || !read.plate) return;
-
-        plateReadsRef.current.push(read.plate);
-        if (plateReadsRef.current.length > 4) plateReadsRef.current.shift();
-
-        const vote = voteOnReads(plateReadsRef.current);
-        const onDocument = Date.now() - docBarcodeAtRef.current < 2500;
-        if (onDocument && vote && __DEV__) {
-          console.log(`[ScanScreen] plate "${vote.plate}" suppressed — document barcodes streaming`);
-        }
-        if (vote && isAcceptableVote(vote, 2) && !handledRef.current && !onDocument) {
-          handledRef.current = true;
-          // Winning state = most-voted across reads.
-          let state: string | null = null;
-          let top = 0;
-          for (const [code, count] of stateVotesRef.current) {
-            if (count > top) { state = code; top = count; }
+        try {
+          const read = await readPreparedPlate(prepared[i]!, {
+            highRes: true,
+            readState: !stateLocked,
+          });
+          if (!read) continue;
+          if (read.state) {
+            stateVotesRef.current.set(read.state, (stateVotesRef.current.get(read.state) ?? 0) + 1);
           }
-          track('plate_detected', { state: state ?? 'unknown', confidence: vote.confidence });
-          freezeShot();
-          setPendingPlate({ plate: vote.plate, state });
-          clearReads();
+          // Keep every non-empty per-photo proposal. A read that is too weak to
+          // stand alone can still become trustworthy when separate photos agree.
+          if (read.plate) plateReadsRef.current.push(read.plate);
+          if (read.photoUri) {
+            if (!shot) {
+              shot = read.photoUri;
+              shotPlateDetected = read.plateDetected;
+            }
+            else discardShot(read.photoUri);
+          }
+          // Stop only when two independent frames agree AND neither contains a
+          // weak character. Device logs showed two matching GWU2019 reads with
+          // min=55 that the remaining frames correctly outvoted as GHU2019.
+          // Agreement alone is therefore not enough.
+          let hasStateConsensus = false;
+          for (const count of stateVotesRef.current.values()) {
+            if (count >= 2) {
+              hasStateConsensus = true;
+              break;
+            }
+          }
+          if (
+            previousRead?.plate === read.plate &&
+            previousRead.confident &&
+            read.confident &&
+            (previousRead.vote?.confidence ?? 0) >= 90 &&
+            (read.vote?.confidence ?? 0) >= 90 &&
+            (previousRead.vote?.minCharPct ?? 0) >= 75 &&
+            (read.vote?.minCharPct ?? 0) >= 75 &&
+            read.plate.length >= 6 &&
+            hasStateConsensus
+          ) {
+            break;
+          }
+          previousRead = read;
+        } catch (e) {
+          if (__DEV__) console.error('[ScanScreen] plate OCR error:', e);
         }
-      } catch (e) {
-        if (__DEV__) console.error('[ScanScreen] read error:', e);
-      } finally {
-        readingRef.current = false;
       }
-    }, 500);
-    return () => clearInterval(id);
-  }, [cameraActive]);
+    } finally {
+      readingRef.current = false;
+      // Preparation deletes processed raws; deletion is idempotent, so this
+      // also safely removes captures left after a prepare failure.
+      for (const photo of photos) discardShot(photo.uri);
+      for (const photo of prepared) discardPreparedPlate(photo);
+    }
 
-  const resetPending = () => {
-    setPendingPlate(null);
-    setPendingVin(null);
-    unfreezeShot();
+    const vote = voteOnReads(plateReadsRef.current, { preferDigitTwins: false });
+    let state: string | null = null;
+    let top = 0;
+    for (const [code, count] of stateVotesRef.current) {
+      if (count > top) { state = code; top = count; }
+    }
+    // A single state OCR hit is too easy to confuse with plate branding or a
+    // slogan. Leave it blank so the required picker asks the user instead.
+    if (top < 2) state = null;
+    const resolvedPlate = vote?.plate
+      ? resolvePlateForState(vote.plate, state, plateReadsRef.current)
+      : '';
+    // Confidence to show on the review page. A lone read is trivially "100%"
+    // (it only agrees with itself) but isn't trustworthy — cap single reads to
+    // the low band so the UI flags them honestly. No vote → nothing read.
+    let confidence = resolvedPlate
+      ? (plateReadsRef.current.length >= 2 ? vote!.confidence : Math.min(vote!.confidence, 45))
+      : undefined;
+    // Five-character plates exist, but in camera OCR they are also the common
+    // signature of a clipped prefix/suffix (e.g. AC392 from 8BAC392). Keep the
+    // editable proposal while forcing the review screen's low-confidence state.
+    if (resolvedPlate.length === 5 && confidence !== undefined) {
+      confidence = Math.min(confidence, 65);
+    }
+    handledRef.current = true;
+    if (__DEV__) {
+      console.log(
+        `[capturePlate] result plate=${resolvedPlate || 'none'} state=${state ?? 'none'} ` +
+          `confidence=${confidence ?? 'n/a'} candidateReads=${plateReadsRef.current.length}/${PLATE_BURST}`,
+      );
+    }
+    track('plate_detected', { state: state ?? 'unknown', confidence: confidence ?? 0 });
+    const imageUri = shot ?? undefined;
     clearReads();
-    handledRef.current = false;
+    navigation.navigate('ScanReview', {
+      mode: 'plate',
+      plate: resolvedPlate,
+      state,
+      imageUri,
+      plateDetected: shotPlateDetected,
+      confidence,
+    });
   };
 
-  // Navigate FIRST, load THERE. The destination screen owns the network call
-  // and its loading state, so the confirm sheet never collapses into a dead
-  // beat between the sheet closing and the next screen appearing.
-  const doVinLookup = useCallback(
-    (vin: string) => {
-      setSheetOpen(false);
-      setPendingVin(null);
-      unfreezeShot();
-      navigation.navigate('BasicResult', { vin, lookup: true });
-    },
-    [navigation, unfreezeShot],
-  );
+  // Shutter — VIN mode. A high-res still scanned for a barcode via
+  // scanFromURLAsync (can decode a small/blurry barcode the live feed missed).
+  // Either way it lands on the review page (with the still, so the user can read
+  // the VIN off it and type). Live passive barcode also stays on.
+  // Barcode-scan a URI (VIN types), timeout-guarded. Returns the first VIN.
+  const scanUriForVin = async (uri: string, tag: string): Promise<string | null> => {
+    try {
+      const found = await Promise.race([
+        scanFromURLAsync(uri, [...VIN_BARCODES]),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('scan timeout')), 4000)),
+      ]);
+      if (__DEV__) {
+        console.log(
+          `[captureVin] ${tag}: ${found.length} barcode(s):`,
+          found.map((r) => `${r.type}: ${JSON.stringify((r.data ?? '').slice(0, 40))}`).join(' | ') || '(none)',
+        );
+      }
+      for (const r of found) {
+        const v = extractVinFromBarcode(r.data ?? '');
+        if (v) return v;
+        if (__DEV__) console.log(`[captureVin] ${r.type} payload had no VIN: ${JSON.stringify(r.data ?? '')}`);
+      }
+    } catch (e) {
+      if (__DEV__) console.log(`[captureVin] ${tag} failed:`, e);
+    }
+    return null;
+  };
 
-  // FREE plate→VIN lookup (funnel opener — the paid reports carry the
-  // economics). VehicleMatch runs the actual lookup on arrival; it fires ONLY
-  // from the confirm sheet's explicit button, never from camera frames.
-  const doPlateLookup = useCallback(
-    (plate: string, state: string) => {
-      setSheetOpen(false);
-      setPendingPlate(null);
-      unfreezeShot();
-      navigation.navigate('VehicleMatch', { plate, state });
-    },
-    [navigation, unfreezeShot],
-  );
+  const captureVin = async () => {
+    let fullPhotoUri: string | null = null;
+    let cropUri: string | null = null;
+    let cropHandedToReview = false;
+    try {
+      if (!camRef.current) return;
+      readingRef.current = true;
+      const photo = await camRef.current.takePictureAsync({ skipProcessing: false, quality: 0.9 });
+      fullPhotoUri = photo?.uri ?? null;
+      readingRef.current = false;
 
-  // Manual plate entry → same editable confirm sheet
-  const onSubmitPlate = (plate: string, state: string) => {
-    handledRef.current = true;
-    setSheetOpen(false);
-    setPendingPlate({ plate, state });
+      // Frame crop (also the display image) — the barcode is much larger here
+      // than in the full still, so scan it FIRST (small codes decode better
+      // upscaled). Fall back to the full still if the crop missed it.
+      cropUri =
+        photo?.uri && photo.width && photo.height
+          ? await cropToFrame(photo.uri, photo.width, photo.height, frameMeasureRef.current)
+          : null;
+
+      let vin: string | null = null;
+      let source: 'barcode' | 'text' = 'barcode';
+      if (cropUri) vin = await scanUriForVin(cropUri, `frame-crop`);
+      if (!vin && photo?.uri) vin = await scanUriForVin(photo.uri, `full-still ${photo.width}x${photo.height}`);
+      // No VIN barcode → OCR the printed VIN text (check-digit validated). This
+      // is what reads a registration doc / door-jamb label with no VIN barcode.
+      if (!vin && cropUri) {
+        vin = await readVinFromImage(cropUri);
+        if (vin) source = 'text';
+        if (__DEV__) console.log(`[captureVin] OCR text VIN: ${vin ?? 'none'}`);
+      }
+      if (__DEV__) console.log(`[captureVin] result vin=${vin ?? 'none'}`);
+
+      handledRef.current = true;
+      if (vin) track('vin_detected', { source: source === 'text' ? 'still' : 'barcode' });
+      // Show the frame crop; drop the full still (never keep the whole picture).
+      const imageUri = cropUri ?? undefined;
+      navigation.navigate('ScanReview', {
+        mode: 'vin',
+        vin: vin ?? '',
+        imageUri,
+        // A decoded barcode is definitive. Checksum-valid text OCR is strong,
+        // but still deserves an explicit double-check on the review screen.
+        confidence: vin ? (source === 'barcode' ? 100 : 80) : undefined,
+      });
+      // ScanReview now owns this file and deletes it when that screen leaves.
+      cropHandedToReview = cropUri !== null;
+    } finally {
+      readingRef.current = false;
+      discardShot(fullPhotoUri);
+      if (!cropHandedToReview) discardShot(cropUri);
+    }
+  };
+
+  const captureOnce = async () => {
+    if (captureInFlightRef.current || handledRef.current) return;
+    captureInFlightRef.current = true;
+    track('scan_button_tapped');
+    try {
+      if (!(await ensurePermission())) return;
+      setCapturing(true);
+      handledRef.current = false;
+      // Tiny settle so continuous AF can lock — kept short; the preview has
+      // usually been focused for a while before the tap.
+      await new Promise((r) => setTimeout(r, 120));
+      if (mode === 'plate') await capturePlate();
+      else await captureVin();
+    } finally {
+      captureInFlightRef.current = false;
+      setCapturing(false);
+    }
   };
 
   // A barcode/QR is always a VIN — plates never carry them (covers Tesla's
@@ -328,7 +424,10 @@ export default function ScanScreen({ navigation, route }: Props) {
 
   const onBarcodeScanned = useCallback(
     (result: BarcodeScanningResult) => {
-      if (!scanning) return; // ignore until the user starts scanning
+      if (!previewActive) return; // only while the viewfinder is live
+      // The still-capture path scans the same barcode itself. Ignoring live
+      // callbacks during a shutter operation prevents two competing routes.
+      if (captureInFlightRef.current) return;
       if (handledRef.current) return;
       if (!barcodeInFrame(result)) {
         if (__DEV__) console.log(`[barcode] ${result.type} outside frame — ignored`);
@@ -342,38 +441,14 @@ export default function ScanScreen({ navigation, route }: Props) {
         const payload = result.data ?? '';
         console.log(`[barcode] ${result.type} -> ${vin ?? 'no VIN'} | ${payload.length} chars | FULL payload:\n${JSON.stringify(payload)}`);
       }
-      if (!vin) {
-        docBarcodeAtRef.current = Date.now();
-        return;
-      }
+      if (!vin) return; // VIN-less barcode (document control numbers) — ignore
       handledRef.current = true;
       track('vin_detected', { source: 'barcode' });
-      // Freeze what the user is aiming at: barcodes decode off the live feed
-      // (no photo exists), so snap one. The OCR loop usually has the camera
-      // mid-photo when a barcode fires — retry briefly instead of skipping,
-      // or the preview visibly keeps moving behind the sheet. Best-effort:
-      // the prompt opens regardless.
-      const snapFreeze = (attempt: number) => {
-        if (attempt >= 4) return;
-        if (readingRef.current || !camRef.current) {
-          setTimeout(() => snapFreeze(attempt + 1), 300);
-          return;
-        }
-        readingRef.current = true;
-        camRef.current
-          .takePictureAsync({ skipProcessing: false, quality: 0.5 })
-          .then((photo) => {
-            if (photo?.uri) setFrozenFull(photo.uri);
-          })
-          .catch(() => {})
-          .finally(() => {
-            readingRef.current = false;
-          });
-      };
-      snapFreeze(0);
-      setPendingVin(vin);
+      // A decoded VIN barcode is trusted — straight to the review page to
+      // confirm (no image needed; the barcode already resolved cleanly).
+      navigation.navigate('ScanReview', { mode: 'vin', vin, confidence: 100 });
     },
-    [scanning],
+    [previewActive, navigation],
   );
 
   // Pinch to zoom. `scaleChange` is the per-event ratio, so we accumulate it
@@ -395,7 +470,8 @@ export default function ScanScreen({ navigation, route }: Props) {
             zoom={zoom}
             enableTorch={torch}
             // 1080p capture: skips the 12MP computational-photography pipeline
-            // that made each takePictureAsync take ~2s. Plenty for OCR.
+            // that makes takePictureAsync take ~2s. The OCR normalizes to 1400px
+            // anyway, so more capture pixels add latency with no read benefit.
             pictureSize="1920x1080"
             animateShutter={false}
             // expo-camera focus semantics are inverted: "on" = focus ONCE then
@@ -405,14 +481,8 @@ export default function ScanScreen({ navigation, route }: Props) {
             barcodeScannerSettings={{ barcodeTypes: [...VIN_BARCODES] }}
             onBarcodeScanned={onBarcodeScanned}
           />
-          {frozenFull ? (
-            <Image source={{ uri: frozenFull }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          ) : null}
-          {/* Darken the idle preview a touch so the frame + button pop —
-              but never dim a frozen capture; it should read clean. */}
-          {!frozen ? (
-            <View style={[styles.scrim, !scanning && styles.scrimIdle]} pointerEvents="none" />
-          ) : null}
+          {/* Darken the preview a touch so the frame + controls pop. */}
+          <View style={styles.scrim} pointerEvents="none" />
         </>
       ) : (
         <LinearGradient
@@ -424,25 +494,25 @@ export default function ScanScreen({ navigation, route }: Props) {
       )}
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        {/* Header keeps its layout space while scanning (opacity only) so the
-            frame never shifts — the crop mapping is measured against this
-            layout and must stay valid in both states. */}
-        <View style={[styles.header, scanning && styles.headerHidden]} pointerEvents="none">
+        <View style={styles.header} pointerEvents="none">
           <Text style={styles.title}>Scan a plate or VIN</Text>
-          <Text style={styles.subtitle}>Point at a license plate — or a VIN label or barcode.</Text>
+          <Text style={styles.subtitle}>
+            {mode === 'plate'
+              ? 'Frame the license plate, then tap Capture.'
+              : 'Frame the VIN barcode — door jamb, dashboard or windshield.'}
+          </Text>
         </View>
 
         <View style={styles.stage}>
           <View ref={frameContainerRef} collapsable={false}>
-            {frozenShot ? (
-              <Image source={{ uri: frozenShot }} style={styles.frozenShot} resizeMode="cover" />
-            ) : null}
-            <ScannerFrame paused={frozen} />
+            <ScannerFrame paused={capturing} variant={mode} />
           </View>
-          {/* Always in layout (opacity toggle) — conditionally rendering it
-              re-centers the stage and moves the frame between idle/scanning. */}
-          <Text style={[styles.hint, !scanning && styles.hintHidden]}>
-            Point at a license plate or VIN barcode
+          <Text style={styles.hint}>
+            {capturing
+              ? 'Reading…'
+              : mode === 'plate'
+                ? 'Point at the license plate'
+                : 'Point at the VIN barcode'}
           </Text>
           {zoom > 0.01 ? (
             <Text style={styles.zoomBadge}>{`${(1 + zoom * 4).toFixed(1)}×`}</Text>
@@ -470,53 +540,65 @@ export default function ScanScreen({ navigation, route }: Props) {
         ) : null}
 
         <View style={styles.actions}>
-          {scanning ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Stop scanning" onPress={stopScanning} style={styles.stopBtn} hitSlop={8}>
-              <Text style={styles.stopBtnText}>Stop scanning</Text>
-            </Pressable>
-          ) : (
-            <PrimaryButton label="Start scanning" onPress={startScanning} />
-          )}
-          <Pressable accessibilityRole="button" accessibilityLabel="Type plate or VIN manually" onPress={() => { track('manual_entry_opened'); setSheetOpen(true); }} style={styles.typeRow} hitSlop={8}>
+          {/* Plate / VIN mode tabs — default Plate. Live barcode stays on in
+              both, so a VIN barcode is caught on either tab. */}
+          <View style={styles.tabs}>
+            {(['plate', 'vin'] as const).map((m) => (
+              <Pressable
+                key={m}
+                accessibilityRole="button"
+                accessibilityLabel={m === 'plate' ? 'Scan a plate' : 'Scan a VIN'}
+                accessibilityState={{ selected: mode === m }}
+                onPress={() => { if (mode !== m) { setMode(m); track('scan_mode_changed', { mode: m }); } }}
+                style={[styles.tab, mode === m && styles.tabActive]}
+                hitSlop={6}
+              >
+                <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>
+                  {m === 'plate' ? 'Plate' : 'VIN'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <PrimaryButton
+            label={
+              permission && !permission.granted
+                ? permission.canAskAgain
+                  ? 'Allow camera'
+                  : 'Open camera settings'
+                : capturing
+                  ? 'Reading…'
+                  : 'Capture'
+            }
+            onPress={
+              permission && !permission.granted && !permission.canAskAgain
+                ? () => void Linking.openSettings()
+                : captureOnce
+            }
+            loading={capturing}
+            disabled={capturing}
+          />
+          {permission && !permission.granted ? (
+            <Text style={styles.permissionText}>
+              {permission.canAskAgain
+                ? 'Camera access is needed only for scanning. You can still type a plate or VIN.'
+                : 'Camera access is off. Enable it in Settings, or type a plate or VIN instead.'}
+            </Text>
+          ) : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Type plate or VIN manually" onPress={() => { track('manual_entry_opened'); navigation.navigate('ScanReview', { mode, manual: true }); }} style={styles.typeRow} hitSlop={8}>
             <Keyboard size={18} color="#AEB8CC" strokeWidth={2.25} />
             <Text style={styles.typeText}>Can&apos;t scan? Type instead</Text>
           </Pressable>
         </View>
       </SafeAreaView>
 
-      <ManualEntrySheet
-        visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onSubmitVin={(vin) => {
-          // Claim the detection loop (like onSubmitPlate) so a camera tick
-          // can't fire a competing read before the confirm sheet opens.
-          handledRef.current = true;
-          setPendingVin(vin);
-          setSheetOpen(false);
-        }}
-        onSubmitPlate={onSubmitPlate}
+      {/* Centered capture loader — same overlay pattern as lookups/reports,
+          with scan-specific wording per mode. */}
+      <LoadingOverlay
+        visible={capturing}
+        title={mode === 'plate' ? 'Reading the plate' : 'Reading the VIN'}
+        messages={mode === 'plate' ? SCANNING_MESSAGES : SCANNING_VIN_MESSAGES}
       />
 
-      <ScanConfirmSheet
-        visible={pendingPlate !== null && pendingVin === null}
-        initialPlate={pendingPlate?.plate ?? ''}
-        initialState={pendingPlate?.state ?? null}
-        onCancel={resetPending}
-        onConfirm={(plate, state) => {
-          track('scan_confirmed');
-          doPlateLookup(plate, state);
-        }}
-      />
-
-      <VinConfirmSheet
-        visible={pendingVin !== null}
-        initialVin={pendingVin ?? ''}
-        onCancel={resetPending}
-        onConfirm={(vin) => {
-          track('scan_confirmed');
-          doVinLookup(vin);
-        }}
-      />
     </View>
     </GestureDetector>
   );
@@ -524,11 +606,9 @@ export default function ScanScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0B1220' },
-  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(6,10,20,0.35)' },
-  scrimIdle: { backgroundColor: 'rgba(6,10,20,0.55)' },
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(6,10,20,0.4)' },
   safe: { flex: 1, paddingHorizontal: 20 },
   header: { paddingTop: 8, gap: 8 },
-  headerHidden: { opacity: 0 },
   title: { color: '#FFFFFF', fontSize: 28, fontWeight: '800', marginTop: 4 },
   subtitle: { color: '#9AA6BC', fontSize: 15, lineHeight: 21 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
@@ -541,24 +621,30 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },
-  hintHidden: { opacity: 0 },
   // 20 (safe) + 36 = 56pt from the screen edge — narrower than the floating
   // tab bar so the scan controls read as a compact centered column.
   actions: { gap: 12, paddingBottom: 80, paddingHorizontal: 36 },
+  // Plate / VIN segmented control above the shutter.
+  tabs: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  tab: { paddingVertical: 7, paddingHorizontal: 22, borderRadius: 8 },
+  tabActive: { backgroundColor: '#FFFFFF' },
+  tabText: { color: '#DCE3F0', fontSize: 14, fontWeight: '700' },
+  tabTextActive: { color: '#0B1220' },
   typeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   typeText: { color: '#AEB8CC', fontSize: 15, fontWeight: '600' },
-  // Mirrors PrimaryButton's metrics exactly (padding 12/16, radius 12, 16pt
-  // text) so swapping Start↔Stop never shifts the layout — the ScannerFrame
-  // must hold the same measured position in both states.
-  stopBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E5484D',
+  permissionText: {
+    color: '#AEB8CC',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
   },
-  stopBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   // Floats above the stage flow — appearing/disappearing must not re-center
   // the frame.
   zoomBadge: {
@@ -599,7 +685,6 @@ const styles = StyleSheet.create({
   },
   // Detection freeze: the exact frame-region shot, shown inside the scanner
   // frame while a confirm sheet is up (slight inset so the corners stay visible).
-  frozenShot: { position: 'absolute', top: 4, left: 4, right: 4, bottom: 4, borderRadius: 10 },
   torchBtnActive: {
     backgroundColor: '#FFD54A',
     borderColor: '#FFD54A',

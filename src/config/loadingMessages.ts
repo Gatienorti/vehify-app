@@ -52,6 +52,21 @@ export const BUILDING_REPORT_MESSAGES = [
   'Kicking the tires, digitally…',
 ];
 
+export const SCANNING_MESSAGES = [
+  'Reading the plate…',
+  'Lining up the characters…',
+  'Double-checking every letter…',
+  'Ruling out the look-alikes (0 or O?)…',
+  'Taking a few looks to be sure…',
+];
+
+export const SCANNING_VIN_MESSAGES = [
+  'Reading the VIN barcode…',
+  'Lining up all 17…',
+  'Decoding the label…',
+  'Making sure it scanned clean…',
+];
+
 export const REPORT_OPEN_MESSAGES = [
   'Fetching it from the vault…',
   'Un-crumpling the paperwork…',
