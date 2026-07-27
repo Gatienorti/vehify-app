@@ -1,10 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Clock, Scan, User, type LucideIcon } from 'lucide-react-native';
+import { Camera, Clock, Scan, User, type LucideIcon } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { brandGradient } from '../theme/colors';
+import { useScanCaptureRef } from '../features/scan/captureBridge';
 
 /**
  * Floating, dark, rounded tab bar with a raised center SCAN button.
@@ -27,6 +28,7 @@ const SIDE_ICONS: Record<string, LucideIcon> = {
 
 export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const captureRef = useScanCaptureRef();
 
   const go = (routeName: string, key: string, focused: boolean) => {
     const event = navigation.emit({ type: 'tabPress', target: key, canPreventDefault: true });
@@ -40,12 +42,14 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
           const focused = state.index === index;
 
           if (route.name === 'Scan') {
+            // On the Scan screen the center button IS the shutter: camera icon +
+            // fires the registered capture. Elsewhere it navigates to Scan.
             return (
               <View key={route.key} style={styles.centerSlot} pointerEvents="box-none">
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Scan"
-                  onPress={() => go(route.name, route.key, focused)}
+                  accessibilityLabel={focused ? 'Capture' : 'Scan'}
+                  onPress={() => (focused ? captureRef.current?.() : go(route.name, route.key, focused))}
                   style={({ pressed }) => [styles.scanBtn, { transform: [{ scale: pressed ? 0.93 : 1 }] }]}
                 >
                   <LinearGradient
@@ -54,7 +58,11 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
                     end={{ x: 1, y: 1 }}
                     style={styles.scanGradient}
                   >
-                    <Scan size={34} color="#FFFFFF" strokeWidth={2.4} />
+                    {focused ? (
+                      <Camera size={32} color="#FFFFFF" strokeWidth={2.4} />
+                    ) : (
+                      <Scan size={34} color="#FFFFFF" strokeWidth={2.4} />
+                    )}
                   </LinearGradient>
                 </Pressable>
               </View>

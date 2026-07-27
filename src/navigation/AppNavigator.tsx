@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '../theme';
 import FloatingTabBar from '../components/FloatingTabBar';
+import { ScanCaptureProvider } from '../features/scan/captureBridge';
 import HistoryScreen from '../screens/HistoryScreen';
 import ScanScreen from '../screens/ScanScreen';
 import AccountScreen from '../screens/AccountScreen';
@@ -19,19 +20,23 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function Tabs() {
   return (
-    <Tab.Navigator
-      initialRouteName="Scan"
-      tabBar={(props) => <FloatingTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tab.Screen name="History" component={HistoryScreen} />
-      <Tab.Screen
-        name="Scan"
-        component={ScanScreen}
-        listeners={{ tabPress: () => track('scan_button_tapped') }}
-      />
-      <Tab.Screen name="Account" component={AccountScreen} />
-    </Tab.Navigator>
+    // Provider wraps BOTH the tabBar and the screens so the center button can
+    // trigger ScanScreen's capture when Scan is focused.
+    <ScanCaptureProvider>
+      <Tab.Navigator
+        initialRouteName="Scan"
+        tabBar={(props) => <FloatingTabBar {...props} />}
+        screenOptions={{ headerShown: false }}
+      >
+        <Tab.Screen name="History" component={HistoryScreen} />
+        <Tab.Screen
+          name="Scan"
+          component={ScanScreen}
+          listeners={{ tabPress: () => track('scan_button_tapped') }}
+        />
+        <Tab.Screen name="Account" component={AccountScreen} />
+      </Tab.Navigator>
+    </ScanCaptureProvider>
   );
 }
 

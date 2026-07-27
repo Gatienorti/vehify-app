@@ -42,7 +42,8 @@ import LockIcon from '../icons/vehify/lock.svg';
 import AccidentDamage from '../icons/vehify/accident-damage.svg';
 import TheftStolen from '../icons/vehify/theft-stolen.svg';
 import LienIcon from '../icons/vehify/lien.svg';
-import CameraScan from '../icons/vehify/camera-scan.svg';
+import BarcodeVin from '../icons/vehify/barcode-vin.svg';
+import LicensePlate from '../icons/vehify/license-plate.svg';
 // Extended specifications
 import TrimLevel from '../icons/vehify/trim-level.svg';
 import TransmissionIcon from '../icons/vehify/transmission.svg';
@@ -118,7 +119,8 @@ export const VLock = wrap(LockIcon);
 export const VAccidents = wrap(AccidentDamage, 1.4);
 export const VTheft = wrap(TheftStolen);
 export const VLien = wrap(LienIcon);
-export const VCameraScan = wrap(CameraScan);
+export const VBarcodeVin = wrap(BarcodeVin);
+export const VLicensePlate = wrap(LicensePlate);
 
 // Extended specifications
 export const VTrim = wrap(TrimLevel);

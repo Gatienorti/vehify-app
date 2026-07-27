@@ -76,7 +76,7 @@ Complete History is an **upgrade-only** path — the user buys Buyer's Analysis 
 
 ### Scan Flow (spec §6) — TAP-TO-CAPTURE
 1. Tap SCAN → request camera permission (first time only) → live camera, ready immediately (no "start scanning" step).
-2. **Plate | VIN tabs** (default Plate) pick what the shutter reads; **live barcode detection stays on in both** (a VIN barcode is caught on either tab, no photo needed).
+2. **VIN | Plate tabs at the top** (default **VIN** — exact, free, unlimited) pick what the shutter reads; **live barcode detection stays on in both** (a VIN barcode is caught on either tab, no photo needed). On the Scan screen the floating tab bar's **center button becomes the camera shutter** (fires capture via `src/features/scan/captureBridge.tsx`); the in-screen `Capture` button does the same.
 3. Tap **Capture** → a brief AF settle, then a burst of high-res reads (plate mode) or a `scanFromURLAsync` still-barcode read (VIN mode). The editable **`ScanReview`** screen (`src/screens/ScanReviewScreen.tsx`, a routed screen — NOT a bottom sheet) ALWAYS opens — even on a weak/empty read (empty → type) — so a tap never feels like "nothing happened."
 4. User confirms in the sheet → *now* call backend. Editable if the read is wrong.
 5. `Can't scan? Type instead` → the same **`ScanReview`** screen in manual mode (VIN or Plate).

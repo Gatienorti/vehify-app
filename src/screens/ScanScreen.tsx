@@ -11,9 +11,9 @@ import {
   useCameraPermissions,
   type BarcodeScanningResult,
 } from 'expo-camera';
-import { Keyboard, Zap, ZapOff } from 'lucide-react-native';
-import PrimaryButton from '../components/PrimaryButton';
-import { VCameraScan } from '../components/vehifyIcons';
+import { HelpCircle, Keyboard, Zap, ZapOff } from 'lucide-react-native';
+import ScanHelpModal from '../components/ScanHelpModal';
+import { useScanCaptureRef } from '../features/scan/captureBridge';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { SCANNING_MESSAGES, SCANNING_VIN_MESSAGES } from '../config/loadingMessages';
 import ScannerFrame from '../components/ScannerFrame';
@@ -49,7 +49,8 @@ type ScanMode = 'plate' | 'vin';
 export default function ScanScreen({ navigation }: Props) {
   // Which target the shutter reads. Live barcode detection stays on in BOTH
   // modes, so a VIN barcode is never missed while on the Plate tab.
-  const [mode, setMode] = useState<ScanMode>('plate');
+  const [mode, setMode] = useState<ScanMode>('vin');
+  const [helpOpen, setHelpOpen] = useState(false);
   // A capture (burst) is in flight — shows the "Reading…" loader.
   const [capturing, setCapturing] = useState(false);
 
@@ -389,6 +390,27 @@ export default function ScanScreen({ navigation }: Props) {
     }
   };
 
+  // Permission-aware capture trigger shared by the in-screen Capture button AND
+  // the tab bar's center button. (captureOnce requests permission itself; the
+  // only special case is permanently-denied → deep-link to Settings.)
+  const onCapturePress = () => {
+    if (permission && !permission.granted && !permission.canAskAgain) {
+      void Linking.openSettings();
+    } else {
+      void captureOnce();
+    }
+  };
+
+  // Register the trigger so the floating tab bar's center button fires it while
+  // Scan is focused. No dep array → the ref always holds the latest closure.
+  const captureRef = useScanCaptureRef();
+  useEffect(() => {
+    captureRef.current = onCapturePress;
+    return () => {
+      captureRef.current = null;
+    };
+  });
+
   // A barcode/QR is always a VIN — plates never carry them (covers Tesla's
   // door-jamb QR as well as Code39/128/DataMatrix/PDF417 VIN barcodes).
   // A barcode only counts when it sits INSIDE the scanner frame — same rule
@@ -495,13 +517,43 @@ export default function ScanScreen({ navigation }: Props) {
       )}
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.header} pointerEvents="none">
-          <Text style={styles.title}>Scan a plate or VIN</Text>
-          <Text style={styles.subtitle}>
-            {mode === 'plate'
-              ? 'Frame the license plate, then tap Capture.'
-              : 'Frame the VIN barcode — door jamb, dashboard or windshield.'}
-          </Text>
+        {/* box-none: touches pass through to the camera, EXCEPT the help button. */}
+        <View style={styles.header} pointerEvents="box-none">
+          <View style={styles.titleRow}>
+            {/* Title follows the selected mode; the "aim" guidance lives on the
+                hint under the frame, so no subtitle here. */}
+            <Text style={styles.title}>{mode === 'plate' ? 'Scan a Plate' : 'Scan a VIN'}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="How to scan"
+              onPress={() => setHelpOpen(true)}
+              hitSlop={10}
+              style={styles.helpBtn}
+            >
+              <HelpCircle size={24} color="#9AA6BC" strokeWidth={2.25} />
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Plate / VIN mode toggle — up top (a "what am I scanning?" choice made
+            before you aim). Live barcode stays on in BOTH, so a VIN barcode is
+            caught on either mode. Defaults to VIN (exact + free + unlimited). */}
+        <View style={styles.tabs}>
+          {(['vin', 'plate'] as const).map((m) => (
+            <Pressable
+              key={m}
+              accessibilityRole="button"
+              accessibilityLabel={m === 'plate' ? 'Scan a plate' : 'Scan a VIN'}
+              accessibilityState={{ selected: mode === m }}
+              onPress={() => { if (mode !== m) { setMode(m); track('scan_mode_changed', { mode: m }); } }}
+              style={[styles.tab, mode === m && styles.tabActive]}
+              hitSlop={6}
+            >
+              <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>
+                {m === 'plate' ? 'Plate' : 'VIN'}
+              </Text>
+            </Pressable>
+          ))}
         </View>
 
         <View style={styles.stage}>
@@ -541,44 +593,8 @@ export default function ScanScreen({ navigation }: Props) {
         ) : null}
 
         <View style={styles.actions}>
-          {/* Plate / VIN mode tabs — default Plate. Live barcode stays on in
-              both, so a VIN barcode is caught on either tab. */}
-          <View style={styles.tabs}>
-            {(['plate', 'vin'] as const).map((m) => (
-              <Pressable
-                key={m}
-                accessibilityRole="button"
-                accessibilityLabel={m === 'plate' ? 'Scan a plate' : 'Scan a VIN'}
-                accessibilityState={{ selected: mode === m }}
-                onPress={() => { if (mode !== m) { setMode(m); track('scan_mode_changed', { mode: m }); } }}
-                style={[styles.tab, mode === m && styles.tabActive]}
-                hitSlop={6}
-              >
-                <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>
-                  {m === 'plate' ? 'Plate' : 'VIN'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <PrimaryButton
-            label={
-              permission && !permission.granted
-                ? permission.canAskAgain
-                  ? 'Allow camera'
-                  : 'Open camera settings'
-                : capturing
-                  ? 'Reading…'
-                  : 'Capture'
-            }
-            onPress={
-              permission && !permission.granted && !permission.canAskAgain
-                ? () => void Linking.openSettings()
-                : captureOnce
-            }
-            icon={VCameraScan}
-            loading={capturing}
-            disabled={capturing}
-          />
+          {/* No Capture button — the floating tab bar's center button is the
+              shutter (the help modal explains it). */}
           {permission && !permission.granted ? (
             <Text style={styles.permissionText}>
               {permission.canAskAgain
@@ -601,6 +617,8 @@ export default function ScanScreen({ navigation }: Props) {
         messages={mode === 'plate' ? SCANNING_MESSAGES : SCANNING_VIN_MESSAGES}
       />
 
+      <ScanHelpModal visible={helpOpen} onClose={() => setHelpOpen(false)} />
+
     </View>
     </GestureDetector>
   );
@@ -611,8 +629,9 @@ const styles = StyleSheet.create({
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(6,10,20,0.4)' },
   safe: { flex: 1, paddingHorizontal: 20 },
   header: { paddingTop: 8, gap: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { color: '#FFFFFF', fontSize: 28, fontWeight: '800', marginTop: 4 },
-  subtitle: { color: '#9AA6BC', fontSize: 15, lineHeight: 21 },
+  helpBtn: { marginTop: 4 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
   hint: {
     color: '#FFFFFF',
@@ -626,7 +645,7 @@ const styles = StyleSheet.create({
   // 20 (safe) + 36 = 56pt from the screen edge — narrower than the floating
   // tab bar so the scan controls read as a compact centered column.
   actions: { gap: 12, paddingBottom: 80, paddingHorizontal: 36 },
-  // Plate / VIN segmented control above the shutter.
+  // Plate / VIN segmented control — top of the screen, under the header.
   tabs: {
     flexDirection: 'row',
     alignSelf: 'center',
@@ -634,10 +653,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 3,
     gap: 3,
+    marginTop: 16,
   },
-  tab: { paddingVertical: 7, paddingHorizontal: 22, borderRadius: 8 },
+  tab: { paddingVertical: 10, paddingHorizontal: 30, borderRadius: 9 },
   tabActive: { backgroundColor: '#FFFFFF' },
-  tabText: { color: '#DCE3F0', fontSize: 14, fontWeight: '700' },
+  tabText: { color: '#DCE3F0', fontSize: 16, fontWeight: '700' },
   tabTextActive: { color: '#0B1220' },
   typeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   typeText: { color: '#AEB8CC', fontSize: 15, fontWeight: '600' },
