@@ -4,26 +4,49 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronDown, ChevronUp, TrendingDown, TrendingUp } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import {
+  VAccidents,
+  VAssembledIn,
   VAuction,
+  VBattery,
+  VBodyStyle,
+  VBrakes,
   VComparables,
+  VComplaints,
+  VCrashes,
   VCrashSafety,
+  VCylinders,
   VDeal,
   VDepreciation,
+  VDoors,
+  VDriveType,
+  VEngine,
   VEvOwnership,
   VFactoryEquipment,
   VFuelEconomy,
+  VFuelType,
   VHistorySummary,
+  VHorsepower,
+  VInvestigationsClear,
   VInvestigationsOpen,
+  VLien,
   VLock,
   VMaintenance,
+  VManufacturer,
   VMileage,
   VOwnership,
   VRecallsNotices,
   VRecommendation,
   VRedFlags,
+  VSeats,
+  VSeries,
   VSpecs,
+  VTheft,
   VTitleRecords,
+  VTransmission,
+  VTrim,
   VValuePricing,
+  VWeight,
+  VWheelbase,
 } from '../components/vehifyIcons';
 import MarketValueCurve from '../components/MarketValueCurve';
 import MileageHistoryChart from '../components/MileageHistoryChart';
@@ -90,13 +113,29 @@ function StatRow({ label, value, bad }: { label: string; value: string; bad?: bo
   );
 }
 
-/** Section header: muted icon normally; danger-tinted only when it holds a problem. */
-function SectionHeader({ title, icon: Icon, alert }: { title: string; icon?: IconCmp; alert?: boolean }) {
+/**
+ * In-card header (matches the Basic check): brand-blue icon + title, danger-
+ * tinted only when the section holds a problem.
+ */
+function SectionHeader({
+  title,
+  icon: Icon,
+  alert,
+  warn,
+}: {
+  title: string;
+  icon?: IconCmp;
+  alert?: boolean;
+  warn?: boolean;
+}) {
   const { colors } = useTheme();
+  // danger (red) for confirmed problems, warn (amber) for softer flags like open
+  // recalls/investigations (calm-copy rule), otherwise brand blue.
+  const iconColor = alert ? colors.danger : warn ? colors.warning : colors.primary;
   return (
-    <View style={styles.sectionHeader}>
-      {Icon ? <Icon size={17} color={alert ? colors.danger : colors.textMuted} strokeWidth={2.5} /> : null}
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+    <View style={styles.cardHeaderRow}>
+      {Icon ? <Icon size={20} color={iconColor} strokeWidth={2.2} /> : null}
+      <Text style={[styles.cardHeaderText, { color: colors.text }]}>{title}</Text>
     </View>
   );
 }
@@ -105,30 +144,26 @@ function Section({
   title,
   icon,
   alert,
-  premium,
+  warn,
   children,
 }: {
   title: string;
   icon?: IconCmp;
   alert?: boolean;
-  /** Complete-History (per-VIN) content — subtle brand accent, never severity colors. */
+  warn?: boolean;
+  /** Accepted for call-site compatibility; the per-VIN accent stripe was dropped
+   *  (on a Premium report every card is premium, so it read as noise). */
   premium?: boolean;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();
+  // One self-contained card with the header INSIDE it (parity with Basic) —
+  // not a floating title over a detached card.
   return (
-    <>
-      <SectionHeader title={title} icon={icon} alert={alert} />
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-          premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
-        ]}
-      >
-        {children}
-      </View>
-    </>
+    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <SectionHeader title={title} icon={icon} alert={alert} warn={warn} />
+      {children}
+    </View>
   );
 }
 
@@ -143,50 +178,46 @@ function CollapsibleSection({
   summary,
   defaultOpen = false,
   alert,
-  premium,
+  warn,
   children,
 }: {
   title: string;
   icon?: IconCmp;
   summary: string;
   defaultOpen?: boolean;
-  /** Danger-tint the icon — a collapsed section may still hold a problem. */
+  /** Danger-tint the icon — a collapsed section may still hold a confirmed problem. */
   alert?: boolean;
-  /** Complete-History (per-VIN) content — subtle brand accent, never severity colors. */
+  /** Amber-tint the icon — a softer flag (open recalls/investigations). */
+  warn?: boolean;
+  /** Accepted for call-site compatibility; the per-VIN accent stripe was dropped. */
   premium?: boolean;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(defaultOpen);
   const Chevron = open ? ChevronUp : ChevronDown;
+  // Single card: the tappable header lives at the top; the body expands below it
+  // inside the SAME card (parity with the non-collapsible Section).
   return (
-    <>
+    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${title}, ${open ? 'collapse' : 'expand'}`}
         onPress={() => setOpen((o) => !o)}
-        style={styles.sectionHeader}
+        style={styles.collapseHeader}
         hitSlop={8}
       >
-        {Icon ? <Icon size={17} color={alert ? colors.danger : colors.textMuted} strokeWidth={2.5} /> : null}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+        {Icon ? (
+          <Icon size={20} color={alert ? colors.danger : warn ? colors.warning : colors.primary} strokeWidth={2.2} />
+        ) : null}
+        <Text style={[styles.cardHeaderText, { color: colors.text }]}>{title}</Text>
         <View style={styles.collapseRight}>
           <Text numberOfLines={1} style={[styles.collapseSummary, { color: colors.textMuted }]}>{summary}</Text>
           <Chevron size={18} color={colors.textMuted} strokeWidth={2.5} />
         </View>
       </Pressable>
-      {open ? (
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-            premium && { borderLeftWidth: 3, borderLeftColor: colors.premium },
-          ]}
-        >
-          {children}
-        </View>
-      ) : null}
-    </>
+      {open ? <View style={[styles.collapseBody, { borderColor: colors.border }]}>{children}</View> : null}
+    </View>
   );
 }
 
@@ -196,45 +227,46 @@ function CollapsibleSection({
  * collapsed by default: it's reference material, not verdict.
  */
 function SpecificationsSection({ vehicle }: { vehicle: Vehicle }) {
-  // [label, value, wide?] — long values get a full-width row; the rest pair
-  // two-across in the shared SpecGrid (same layout as the Basic check).
-  const raw: [string, string | undefined, boolean?][] = [
-    ['Trim', vehicle.trim],
-    ['Displacement', vehicle.displacement ? `${vehicle.displacement} L` : undefined],
-    ['Cylinders', vehicle.cylinders ? String(vehicle.cylinders) : undefined],
-    ['Engine config', vehicle.engineConfiguration],
-    ['Turbo', vehicle.turbo],
-    ['Horsepower', vehicle.horsepower ? `${vehicle.horsepower} hp` : undefined],
-    [
-      'Transmission',
-      vehicle.transmission
-        ? vehicle.transmissionSpeeds
-          ? `${vehicle.transmissionSpeeds}-speed ${vehicle.transmission}`
-          : vehicle.transmission
-        : undefined,
-      true,
-    ],
-    ['Doors', vehicle.doors ? String(vehicle.doors) : undefined],
-    ['Seats', vehicle.seats ? String(vehicle.seats) : undefined],
-    ['Series', vehicle.series],
-    ['Vehicle type', vehicle.vehicleType],
-    ['Assembled in', [vehicle.plantCity, vehicle.plantCountry].filter(Boolean).join(', ') || undefined, true],
-    ['GVWR class', vehicle.gvwrClass],
-    ['Wheelbase', vehicle.wheelbase ? `${vehicle.wheelbase} in` : undefined],
-    ['Curb weight', vehicle.curbWeight ? `${vehicle.curbWeight.toLocaleString()} lb` : undefined],
-    ['ABS', vehicle.abs],
-    ['Electrification', vehicle.electrification],
-    [
-      'Battery',
-      vehicle.batteryKwh
-        ? `${vehicle.batteryKwh} kWh${vehicle.batteryType ? ` ${vehicle.batteryType}` : ''}`
-        : vehicle.batteryType,
-      true,
-    ],
+  const place = [vehicle.plantCity, vehicle.plantCountry].filter(Boolean).join(', ');
+  const transmission = vehicle.transmission
+    ? vehicle.transmissionSpeeds
+      ? `${vehicle.transmissionSpeeds}-speed ${vehicle.transmission}`
+      : vehicle.transmission
+    : undefined;
+  const battery = vehicle.batteryKwh
+    ? `${vehicle.batteryKwh} kWh${vehicle.batteryType ? ` ${vehicle.batteryType}` : ''}`
+    : vehicle.batteryType;
+
+  // Every spec gets its own icon and pairs two-across (parity with Basic). Only
+  // Assembled in + Manufacturer are full-width — SpecGrid renders wide rows
+  // LAST, so Manufacturer always ends the sheet on its own row.
+  const raw: (SpecEntry | null)[] = [
+    vehicle.bodyStyle ? { icon: VBodyStyle, label: 'Body style', value: vehicle.bodyStyle } : null,
+    vehicle.doors ? { icon: VDoors, label: 'Doors', value: String(vehicle.doors) } : null,
+    vehicle.engine ? { icon: VEngine, label: 'Engine', value: vehicle.engine } : null,
+    vehicle.horsepower ? { icon: VHorsepower, label: 'Horsepower', value: `${vehicle.horsepower} hp` } : null,
+    vehicle.driveType ? { icon: VDriveType, label: 'Drive type', value: vehicle.driveType } : null,
+    vehicle.fuelType ? { icon: VFuelType, label: 'Fuel type', value: vehicle.fuelType } : null,
+    vehicle.trim ? { icon: VTrim, label: 'Trim', value: vehicle.trim } : null,
+    transmission ? { icon: VTransmission, label: 'Transmission', value: transmission } : null,
+    vehicle.displacement ? { icon: VEngine, label: 'Displacement', value: `${vehicle.displacement} L` } : null,
+    vehicle.cylinders ? { icon: VCylinders, label: 'Cylinders', value: String(vehicle.cylinders) } : null,
+    vehicle.engineConfiguration ? { icon: VEngine, label: 'Engine config', value: vehicle.engineConfiguration } : null,
+    vehicle.turbo ? { icon: VEngine, label: 'Turbo', value: vehicle.turbo } : null,
+    vehicle.seats ? { icon: VSeats, label: 'Seats', value: String(vehicle.seats) } : null,
+    vehicle.series ? { icon: VSeries, label: 'Series', value: vehicle.series } : null,
+    vehicle.vehicleType ? { icon: VBodyStyle, label: 'Vehicle type', value: vehicle.vehicleType } : null,
+    vehicle.wheelbase ? { icon: VWheelbase, label: 'Wheelbase', value: `${vehicle.wheelbase} in` } : null,
+    vehicle.curbWeight ? { icon: VWeight, label: 'Curb weight', value: `${vehicle.curbWeight.toLocaleString()} lb` } : null,
+    vehicle.gvwrClass ? { icon: VWeight, label: 'GVWR class', value: vehicle.gvwrClass } : null,
+    vehicle.abs ? { icon: VBrakes, label: 'ABS', value: vehicle.abs } : null,
+    vehicle.electrification ? { icon: VEvOwnership, label: 'Electrification', value: vehicle.electrification } : null,
+    battery ? { icon: VBattery, label: 'Battery', value: battery } : null,
+    // Trailing full-width rows — Assembled in, then Manufacturer LAST.
+    place ? { icon: VAssembledIn, label: 'Assembled in', value: place, wide: true } : null,
+    vehicle.manufacturer ? { icon: VManufacturer, label: 'Manufacturer', value: vehicle.manufacturer, wide: true } : null,
   ];
-  const entries: SpecEntry[] = raw
-    .filter((e): e is [string, string, boolean?] => Boolean(e[1]))
-    .map(([label, value, wide]) => ({ label, value, wide }));
+  const entries = raw.filter((e): e is SpecEntry => e !== null);
 
   if (entries.length === 0) return null;
 
@@ -320,48 +352,151 @@ function RecordRow({ meta, body }: { meta: string; body: string }) {
   );
 }
 
-/* ───────────────────── verdict flags (summary strip) ───────────────────── */
+/* ─────────────────────── at a glance (summary tiles) ─────────────────────── */
 
-type FlagLevel = 'bad' | 'warn' | 'good';
-interface VerdictFlag {
-  label: string;
-  level: FlagLevel;
-}
+type TileTone = 'good' | 'warn' | 'bad' | 'info';
+type GlanceTile = { icon: IconCmp; value: string; label: string; tone: TileTone };
 
-/** The 5-second answer: the worst findings as chips, or a green all-clear. */
-function buildVerdictFlags(analysis: BuyersAnalysis, history: VehicleHistory | null | undefined): VerdictFlag[] {
-  const flags: VerdictFlag[] = [];
-  if (history?.titleBrands.length) {
-    flags.push({ label: `Title: ${history.titleBrands[0]}`, level: 'bad' });
-  }
-  if ((history?.odometerIssues ?? 0) > 0 || analysis.rollbackDetected) {
-    flags.push({ label: 'Odometer issue', level: 'bad' });
-  }
-  if ((history?.accidents ?? 0) > 0) {
-    flags.push({ label: `${history?.accidents} accident${history?.accidents === 1 ? '' : 's'}`, level: 'bad' });
-  }
-  if ((history?.thefts ?? 0) > 0) {
-    flags.push({ label: 'Theft record', level: 'bad' });
-  }
-  if ((analysis.investigations?.open ?? 0) > 0) {
-    flags.push({ label: 'Open investigation', level: 'bad' });
-  }
-  if (analysis.openRecalls.length > 0) {
-    flags.push({ label: `${analysis.openRecalls.length} open recalls`, level: 'warn' });
-  }
-  if (flags.length === 0) {
-    flags.push({ label: history ? 'No major red flags found' : 'No model-level red flags', level: 'good' });
-  }
-  return flags.slice(0, 5);
-}
-
-function FlagChip({ flag }: { flag: VerdictFlag }) {
+/** A single "at a glance" / scorecard tile — icon + value + label, tinted by tone. */
+function ScorecardTile({ icon: Icon, value, label, tone }: GlanceTile) {
   const { colors } = useTheme();
-  const color =
-    flag.level === 'bad' ? colors.danger : flag.level === 'warn' ? colors.warning : colors.success;
+  const fg =
+    tone === 'bad'
+      ? colors.danger
+      : tone === 'warn'
+        ? colors.warning
+        : tone === 'info'
+          ? colors.primary
+          : colors.success;
   return (
-    <View style={[styles.flagChip, { backgroundColor: `${color}1A` }]}>
-      <Text style={[styles.flagChipText, { color }]}>{flag.label}</Text>
+    <View style={[styles.scoreTile, { backgroundColor: `${fg}14` }]}>
+      <Icon size={20} color={fg} />
+      <Text style={[styles.scoreVal, { color: fg }]} numberOfLines={1}>
+        {value}
+      </Text>
+      <Text style={[styles.scoreLabel, { color: colors.textMuted }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * "Vehicle history at a glance" — the web report's summary grid, mobile-styled
+ * as tinted tiles (parity with the Basic safety overview). Premium shows the
+ * full record set; the analysis tier has only model-level checks (recalls +
+ * investigations). Each tile is a short status, tinted by severity.
+ */
+function buildGlanceTiles(
+  analysis: BuyersAnalysis,
+  history: VehicleHistory | null | undefined,
+): GlanceTile[] {
+  const tiles: GlanceTile[] = [];
+  if (history) {
+    const branded = (history.titleBrands ?? []).length > 0;
+    const odo = history.odometerIssues > 0 || analysis.rollbackDetected;
+    const liens = history.lienRecords?.length ?? 0;
+    const auctions = history.auctionRecords?.length ?? 0;
+    tiles.push(
+      { icon: VTitleRecords, value: branded ? 'Branded' : 'Clean', label: 'title', tone: branded ? 'bad' : 'good' },
+      {
+        icon: VAccidents,
+        value: history.accidents > 0 ? String(history.accidents) : 'None',
+        label: history.accidents === 1 ? 'accident' : 'accidents',
+        tone: history.accidents > 0 ? 'warn' : 'good',
+      },
+      { icon: VMileage, value: odo ? 'Flag' : 'OK', label: 'odometer', tone: odo ? 'bad' : 'good' },
+      {
+        icon: VOwnership,
+        value: history.owners ? String(history.owners) : '—',
+        label: history.owners === 1 ? 'owner' : 'owners',
+        tone: 'info',
+      },
+      {
+        icon: VTheft,
+        value: history.thefts > 0 ? String(history.thefts) : 'None',
+        label: history.thefts === 1 ? 'theft' : 'thefts',
+        tone: history.thefts > 0 ? 'bad' : 'good',
+      },
+      { icon: VMaintenance, value: String(history.serviceHistory?.length ?? 0), label: 'service records', tone: 'info' },
+      {
+        icon: VLien,
+        value: liens > 0 ? String(liens) : 'None',
+        label: liens === 1 ? 'lien' : 'liens',
+        tone: liens > 0 ? 'info' : 'good',
+      },
+      {
+        icon: VAuction,
+        value: auctions > 0 ? String(auctions) : 'None',
+        label: 'auction',
+        tone: auctions > 0 ? 'warn' : 'good',
+      },
+    );
+  }
+  // Complaints + crashes are MODEL-level counts — analysis tier only. On
+  // premium they're hidden: complaints aren't per-car, and "crashes" would read
+  // as this exact car's crashes next to the per-VIN "accidents" tile above.
+  if (!history && analysis.complaints != null) {
+    tiles.push({ icon: VComplaints, value: String(analysis.complaints), label: 'complaints', tone: 'info' });
+  }
+  if (!history && analysis.crashes != null) {
+    tiles.push({
+      icon: VCrashes,
+      value: String(analysis.crashes),
+      label: analysis.crashes === 1 ? 'crash' : 'crashes',
+      tone: 'info',
+    });
+  }
+  // Recalls: on premium, THIS car's unrepaired recall status (per-VIN); on the
+  // analysis tier, the model-level open-recall count.
+  if (history && history.openRecallReported != null) {
+    tiles.push({
+      icon: VRecallsNotices,
+      value: history.openRecallReported ? 'Open' : 'None',
+      label: 'open recall',
+      tone: history.openRecallReported ? 'warn' : 'good',
+    });
+  } else {
+    const recalls = analysis.openRecalls.length;
+    tiles.push({
+      icon: VRecallsNotices,
+      value: recalls > 0 ? String(recalls) : '0',
+      label: recalls === 1 ? 'open recall' : 'open recalls',
+      tone: recalls > 0 ? 'warn' : 'good',
+    });
+  }
+  if (analysis.investigations) {
+    const open = analysis.investigations.open;
+    tiles.push({
+      icon: open > 0 ? VInvestigationsOpen : VInvestigationsClear,
+      value: open > 0 ? String(open) : String(analysis.investigations.total),
+      label: 'investigations',
+      tone: open > 0 ? 'warn' : 'good',
+    });
+  }
+  return tiles;
+}
+
+function AtAGlance({
+  analysis,
+  history,
+}: {
+  analysis: BuyersAnalysis;
+  history: VehicleHistory | null | undefined;
+}) {
+  const { colors, radius } = useTheme();
+  const tiles = buildGlanceTiles(analysis, history);
+  return (
+    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
+      <View style={styles.cardHeaderRow}>
+        <VHistorySummary size={20} color={colors.primary} />
+        <Text style={[styles.cardHeaderText, { color: colors.text }]}>At a glance</Text>
+      </View>
+      <View style={styles.scoreGrid}>
+        {tiles.map((t) => (
+          <ScorecardTile key={t.label} {...t} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -621,7 +756,6 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
     </Section>
   ) : null;
 
-  const verdictFlags = buildVerdictFlags(analysis, history);
   const openInvestigations = analysis.investigations?.items.filter((i) => i.isOpen) ?? [];
   const closedInvestigations = analysis.investigations?.items.filter((i) => !i.isOpen) ?? [];
   const conditionFlags = history?.conditionFlags ? dedupeConditionFlags(history.conditionFlags) : [];
@@ -632,7 +766,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {/* Stale-report banner: a report is a snapshot — recalls, investigations
             and market value move. Offer a fresh (paid) pull instead of a stale read. */}
         {ageDays !== null && ageDays >= STALE_AFTER_DAYS ? (
-          <View style={[styles.staleBanner, { backgroundColor: colors.surfaceAlt }]}>
+          <View style={[styles.staleBanner, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
             <Text style={[styles.staleText, { color: colors.text }]}>
               This report is {ageDays} days old. Recalls, investigations and market value may have
               changed since — pull the latest records.
@@ -648,22 +782,17 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
         <VehicleHero vehicle={data.vehicle} badge={history ? 'Full report' : 'Buyer report'} />
 
-        {/* The 5-second verdict: worst findings as chips (or a green all-clear).
-            Everything below is the supporting evidence. */}
-        <View style={styles.flagStrip}>
-          {verdictFlags.map((f) => (
-            <FlagChip key={f.label} flag={f} />
-          ))}
-        </View>
+        {/* Vehicle history at a glance — the web report's summary grid, as tinted
+            tiles (parity with the Basic safety overview). The 5-second verdict. */}
+        <AtAGlance analysis={analysis} history={history} />
 
-        {/* The verdict leads: the best score owned — per-VIN Buy Score on
-            premium, Model Score on the analysis tier. (Premium also shows
-            Model Score lower down as supporting context.) */}
+        {/* Premium leads with the per-VIN Buy Score; the model-level Model Score
+            is supporting context, shown lower down (after Service & inspections).
+            The analysis tier has only the Model Score, so it leads here. */}
         {history && analysis.buyScore ? (
           <ScoreBadge score={analysis.buyScore} label="Buy Score — this exact car" premium />
-        ) : !history && analysis.modelScore ? (
-          <ScoreBadge score={analysis.modelScore} label="Model Score" />
         ) : null}
+        {!history && analysis.modelScore ? <ScoreBadge score={analysis.modelScore} label="Model Score" /> : null}
 
         {/* Where the per-VIN Buy Score would sit on premium: a one-line locked
             hint — plants the upgrade early without interrupting the report.
@@ -707,7 +836,11 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 </View>
               ) : null}
               <StatRow label="Accidents reported" value={String(history.accidents)} bad={history.accidents > 0} />
-              <StatRow label="Title brands" value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'} bad={history.titleBrands.length > 0} />
+              <StatRow
+                label="Title brands"
+                value={history.titleBrands.length ? history.titleBrands.join(', ') : 'None'}
+                bad={history.titleBrands.length > 0}
+              />
               <StatRow label="Theft records" value={String(history.thefts)} bad={history.thefts > 0} />
               <StatRow label="Odometer issues" value={String(history.odometerIssues)} bad={history.odometerIssues > 0} />
               <StatRow label="Owners" value={history.owners ? String(history.owners) : 'Unknown'} />
@@ -1023,13 +1156,12 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 and not necessarily a bad sign.
               </Text>
             )}
+
+            {/* Model-level track record as SUPPORTING context — below this car's
+                own records (the per-VIN Buy Score already led the report). */}
+            {analysis.modelScore ? <ScoreBadge score={analysis.modelScore} label="Model Score" /> : null}
           </>
         ) : null}
-
-        {/* v2.1 honesty split — the MODEL's track record as supporting
-            context below the per-VIN block. On the analysis tier the Model
-            Score is the headline at the top instead. */}
-        {history && analysis.modelScore ? <ScoreBadge score={analysis.modelScore} label="Model Score" /> : null}
 
         {/* LEGACY pre-split Buyer reports stored valuation at this tier — old
             reports render whatever they paid for. New Buyer reports never
@@ -1140,7 +1272,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           <CollapsibleSection
             title="Investigations"
             icon={VInvestigationsOpen}
-            alert={analysis.investigations.open > 0}
+            warn={analysis.investigations.open > 0}
             summary={`${analysis.investigations.total} on file${analysis.investigations.open > 0 ? ` · ${analysis.investigations.open} open` : ''}`}
             defaultOpen={!history || analysis.investigations.open > 0}
           >
@@ -1189,7 +1321,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         <CollapsibleSection
           title="Recalls & notices"
           icon={VRecallsNotices}
-          alert={analysis.openRecalls.length > 0}
+          warn={analysis.openRecalls.length > 0}
           summary={`${analysis.openRecalls.length} open`}
           defaultOpen={!history || analysis.openRecalls.length > 0}
         >
@@ -1265,6 +1397,9 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             summary={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'} combined`}
             defaultOpen
           >
+            {analysis.fuelEconomy.fuel_type ? (
+              <StatRow label="Fuel type" value={analysis.fuelEconomy.fuel_type} />
+            ) : null}
             <StatRow
               label="Combined"
               value={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'}`}
@@ -1395,7 +1530,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             complete_history; here it is honestly LOCKED — we haven't seen this
             VIN's records yet, and that's the upgrade. */}
         {!history ? (
-          <View style={[styles.lockedCard, { backgroundColor: colors.surfaceAlt }]}>
+          <View style={[styles.lockedCard, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
             <View style={styles.lockedHeader}>
               <VLock size={18} color={colors.premium} />
               <Text style={[styles.lockedTitle, { color: colors.text }]}>
@@ -1430,13 +1565,22 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  card: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4 },
+  card: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
   cardBody: { fontSize: 14, lineHeight: 20, paddingVertical: 12 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   statLabel: { fontSize: 15, flexShrink: 0 },
   statValue: { fontSize: 15, fontWeight: '700', flex: 1, textAlign: 'right' },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', flexShrink: 1 },
+  // In-card header (parity with Basic): brand icon + title inside the card.
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  // At-a-glance tiles — 3 per row (tinted, parity with Basic's safety overview).
+  scoreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, marginBottom: 4 },
+  scoreTile: { flexBasis: '31.5%', flexGrow: 0, alignItems: 'center', gap: 3, paddingVertical: 13, paddingHorizontal: 2, borderRadius: 12 },
+  scoreVal: { fontSize: 18, fontWeight: '800' },
+  scoreLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  cardHeaderText: { fontSize: 17, fontWeight: '800', flexShrink: 1 },
+  collapseHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Divider between a collapsible header and its expanded body.
+  collapseBody: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 2 },
   collapseRight: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 1 },
   collapseSummary: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
   toggleRow: { paddingVertical: 12, alignItems: 'center' },
@@ -1444,7 +1588,7 @@ const styles = StyleSheet.create({
   recordRow: { paddingVertical: 10, gap: 2, borderBottomWidth: StyleSheet.hairlineWidth },
   evIncentive: { fontSize: 13.5, lineHeight: 19, paddingVertical: 4 },
   sourceNote: { fontSize: 12, lineHeight: 16, paddingTop: 6, paddingBottom: 2 },
-  ocHeadline: { fontSize: 22, fontWeight: '800' },
+  ocHeadline: { fontSize: 19, fontWeight: '800' },
   ocHeadlineSub: { fontSize: 13, fontWeight: '500' },
   ocBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 10, marginBottom: 4 },
   ocRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
@@ -1453,7 +1597,6 @@ const styles = StyleSheet.create({
   upsellHintText: { fontSize: 14, fontWeight: '700', flexShrink: 1 },
   recordMeta: { fontSize: 12.5, fontWeight: '600' },
   recordBody: { fontSize: 14, lineHeight: 20 },
-  flagStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   flagChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
   flagChipText: { fontSize: 12.5, fontWeight: '700' },
   flagChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
@@ -1470,15 +1613,14 @@ const styles = StyleSheet.create({
   ownerSub: { fontSize: 12.5, lineHeight: 17 },
   emptyLine: { fontSize: 13.5, lineHeight: 19 },
   reco: { fontSize: 16, lineHeight: 23 },
-  body: { fontSize: 14, lineHeight: 20 },
   upsellText: { fontSize: 14, lineHeight: 20 },
-  lockedCard: { padding: 16, borderRadius: 16 },
+  lockedCard: { padding: 16, borderRadius: 16, borderWidth: 1 },
   lockedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   lockedTitle: { fontSize: 16, fontWeight: '700', flex: 1 },
   dealPillRow: { paddingTop: 12 },
   dealPill: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999 },
   dealPillText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
-  staleBanner: { padding: 14, borderRadius: 14 },
+  staleBanner: { padding: 16, borderRadius: 16, borderWidth: 1 },
   staleText: { fontSize: 14, lineHeight: 20 },
   invRow: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   invText: { fontSize: 14, lineHeight: 20 },

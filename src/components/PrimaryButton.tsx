@@ -4,6 +4,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -16,6 +17,8 @@ interface Props {
   loading?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Optional leading icon — auto-colored to the label, hidden while loading. */
+  icon?: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 }
 
 export default function PrimaryButton({
@@ -25,6 +28,7 @@ export default function PrimaryButton({
   loading = false,
   disabled = false,
   style,
+  icon: Icon,
 }: Props) {
   const { colors, radius, spacing } = useTheme();
   const isDisabled = disabled || loading;
@@ -54,6 +58,11 @@ export default function PrimaryButton({
     >
       {loading ? (
         <ActivityIndicator color={fg} />
+      ) : Icon ? (
+        <View style={styles.row}>
+          <Icon size={19} color={fg} strokeWidth={2.25} />
+          <Text style={[styles.label, { color: fg }]}>{label}</Text>
+        </View>
       ) : (
         <Text style={[styles.label, { color: fg }]}>{label}</Text>
       )}
@@ -63,5 +72,6 @@ export default function PrimaryButton({
 
 const styles = StyleSheet.create({
   base: { alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   label: { fontSize: 16, fontWeight: '600' },
 });

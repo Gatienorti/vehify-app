@@ -13,6 +13,7 @@ import {
 } from 'expo-camera';
 import { Keyboard, Zap, ZapOff } from 'lucide-react-native';
 import PrimaryButton from '../components/PrimaryButton';
+import { VCameraScan } from '../components/vehifyIcons';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { SCANNING_MESSAGES, SCANNING_VIN_MESSAGES } from '../config/loadingMessages';
 import ScannerFrame from '../components/ScannerFrame';
@@ -574,6 +575,7 @@ export default function ScanScreen({ navigation }: Props) {
                 ? () => void Linking.openSettings()
                 : captureOnce
             }
+            icon={VCameraScan}
             loading={capturing}
             disabled={capturing}
           />

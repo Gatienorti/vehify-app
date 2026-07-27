@@ -39,6 +39,20 @@ import Checklist from '../icons/vehify/checklist.svg';
 import ChargingStation from '../icons/vehify/charging-station.svg';
 import AiSummary from '../icons/vehify/ai-summary.svg';
 import LockIcon from '../icons/vehify/lock.svg';
+import AccidentDamage from '../icons/vehify/accident-damage.svg';
+import TheftStolen from '../icons/vehify/theft-stolen.svg';
+import LienIcon from '../icons/vehify/lien.svg';
+import CameraScan from '../icons/vehify/camera-scan.svg';
+// Extended specifications
+import TrimLevel from '../icons/vehify/trim-level.svg';
+import TransmissionIcon from '../icons/vehify/transmission.svg';
+import Cylinders from '../icons/vehify/cylinders.svg';
+import SeatCount from '../icons/vehify/seat-count.svg';
+import YearMakeModel from '../icons/vehify/year-make-model.svg';
+import WheelbaseIcon from '../icons/vehify/wheelbase.svg';
+import TowPackage from '../icons/vehify/tow-package.svg';
+import BrakeService from '../icons/vehify/brake-service.svg';
+import BatteryService from '../icons/vehify/battery-service.svg';
 
 /**
  * Adapt a vendored SVG to the shared IconCmp signature ({ size, color,
@@ -61,8 +75,8 @@ function wrap(Svg: React.FC<SvgProps>, scale = 1): IconCmp {
   };
 }
 
-// Specifications — car-side + crash-collision trace lighter than the rest, so
-// bump them 1.2× to sit at the same visual weight.
+// Specifications — car-side + crash-collision (+ accident-damage) trace lighter
+// than the rest, so bump them 1.4× to sit at the same visual weight.
 export const VBodyStyle = wrap(CarSide, 1.4);
 export const VDoors = wrap(Door);
 export const VEngine = wrap(Engine);
@@ -100,3 +114,19 @@ export const VFactoryEquipment = wrap(Checklist);
 export const VEvOwnership = wrap(ChargingStation);
 export const VRecommendation = wrap(AiSummary);
 export const VLock = wrap(LockIcon);
+// Matches VCrashes' 1.4× so the accident + crash tiles read at the same weight.
+export const VAccidents = wrap(AccidentDamage, 1.4);
+export const VTheft = wrap(TheftStolen);
+export const VLien = wrap(LienIcon);
+export const VCameraScan = wrap(CameraScan);
+
+// Extended specifications
+export const VTrim = wrap(TrimLevel);
+export const VTransmission = wrap(TransmissionIcon);
+export const VCylinders = wrap(Cylinders);
+export const VSeats = wrap(SeatCount);
+export const VSeries = wrap(YearMakeModel);
+export const VWheelbase = wrap(WheelbaseIcon);
+export const VWeight = wrap(TowPackage);
+export const VBrakes = wrap(BrakeService);
+export const VBattery = wrap(BatteryService);

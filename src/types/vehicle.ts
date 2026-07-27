@@ -282,6 +282,10 @@ export interface BuyersAnalysis {
   /** Manufacturer communications (TSBs) on file. */
   manufacturerCommunications: number;
   complaintTrends?: string | null;
+  /** Headline complaint count for the model (NHTSA ODI) — at-a-glance tile. */
+  complaints?: number;
+  /** Complaints that involved a crash (subset of `complaints`) — at-a-glance tile. */
+  crashes?: number;
   /**
    * Recent asking prices for comparable cars (negotiation color) — an
    * accumulating pool refreshed every few days (older points age out at
