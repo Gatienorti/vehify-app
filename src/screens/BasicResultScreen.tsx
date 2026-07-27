@@ -1,27 +1,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import {
-  CarFront,
-  CircleCheckBig,
-  Cog,
-  Factory,
-  FileText,
-  Fuel,
-  Gauge,
-  MapPin,
-  MessageSquare,
-  Settings,
-  ShieldAlert,
-  ShieldCheck,
-  Siren,
-  TriangleAlert,
-  type LucideIcon,
-} from 'lucide-react-native';
+import { CircleCheckBig } from 'lucide-react-native';
 import { useTheme } from '../theme';
-import { vehicleTitle } from '../components/VehicleCard';
-import CarDoorIcon from '../components/CarDoorIcon';
+import VehicleHero from '../components/VehicleHero';
+import SpecGrid, { type SpecEntry, type IconCmp } from '../components/SpecGrid';
+import {
+  VAssembledIn,
+  VBodyStyle,
+  VComplaints,
+  VCrashes,
+  VDoors,
+  VDriveType,
+  VEngine,
+  VFuelEconomy,
+  VFuelType,
+  VHorsepower,
+  VInvestigationsClear,
+  VInvestigationsOpen,
+  VManufacturer,
+  VRecalls,
+  VSafety,
+  VSpecs,
+} from '../components/vehifyIcons';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { BUILDING_REPORT_MESSAGES, VIN_DECODE_MESSAGES } from '../config/loadingMessages';
@@ -42,122 +43,37 @@ import type { SafetyCounts, Vehicle } from '../types/vehicle';
 type Props = StackScreenProps<'BasicResult'>;
 
 /**
- * Hero card — vehicle identity. Photo is OPTIONAL: when `imageUrl` is present it
- * lays out photo-left / text-right; with no image (the free tier today has none)
- * it falls back to a clean text-only hero. A soft brand-tinted gradient sets it
- * apart from the white cards below.
- */
-function Hero({
-  vehicle,
-  plate,
-  imageUrl,
-}: {
-  vehicle: Vehicle;
-  plate?: { plate: string; state?: string };
-  imageUrl?: string;
-}) {
-  const { colors, radius, isDark } = useTheme();
-  return (
-    <LinearGradient
-      colors={isDark ? ['#16233F', '#111826'] : ['#EAF2FF', '#F6FAFF']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.hero, { borderRadius: radius.lg, borderColor: colors.border }]}
-    >
-      {imageUrl ? (
-        <Image source={{ uri: imageUrl }} style={styles.heroImage} resizeMode="contain" />
-      ) : null}
-      <View style={styles.heroText}>
-        <Text style={[styles.heroTitle, { color: colors.text }]}>{vehicleTitle(vehicle)}</Text>
-        <Text style={[styles.heroVin, { color: colors.textMuted }]} selectable>
-          VIN: {vehicle.vin}
-        </Text>
-        {plate ? (
-          <Text style={[styles.heroVin, { color: colors.textMuted }]}>
-            {plate.plate}
-            {plate.state ? ` · ${plate.state}` : ''}
-          </Text>
-        ) : null}
-        <View style={[styles.heroBadge, { backgroundColor: colors.surface }]}>
-          <ShieldCheck size={15} color={colors.primary} strokeWidth={2.5} />
-          <Text style={[styles.heroBadgeText, { color: colors.primary }]}>Basic report</Text>
-        </View>
-      </View>
-    </LinearGradient>
-  );
-}
-
-/** Any lucide icon OR our custom car-door icon (same size/color/stroke props). */
-type IconCmp = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-
-/**
- * One spec: icon on the left, label stacked over value. Stacking (not label ·
- * value side-by-side) so a long value never squeezes the label into "Horsepo…".
- */
-function SpecCell({ icon: Icon, label, value }: { icon: IconCmp; label: string; value: string }) {
-  const { colors } = useTheme();
-  return (
-    <View style={styles.specCell}>
-      <Icon size={18} color={colors.textMuted} strokeWidth={2} />
-      <View style={styles.specTextCol}>
-        <Text style={[styles.specLabel, { color: colors.textMuted }]}>{label}</Text>
-        <Text style={[styles.specValue, { color: colors.text }]}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
-type SpecEntry = { icon: IconCmp; label: string; value: string; wide?: boolean };
-
-/**
- * Specifications card — icon header + iconographic rows. Short specs pair up
+ * Specifications card — icon header + the shared SpecGrid. Short specs pair up
  * two-across; long values (fuel economy, place of assembly, manufacturer) get a
  * full-width row. Only specs the free decode returned are shown.
  */
 function SpecsCard({ vehicle }: { vehicle: Vehicle }) {
   const { colors, radius } = useTheme();
   const raw: (SpecEntry | null)[] = [
-    vehicle.bodyStyle ? { icon: CarFront, label: 'Body style', value: vehicle.bodyStyle } : null,
-    // Custom car-door glyph — lucide only has house doors.
-    vehicle.doors ? { icon: CarDoorIcon, label: 'Doors', value: String(vehicle.doors) } : null,
-    vehicle.engine ? { icon: Cog, label: 'Engine', value: vehicle.engine } : null,
-    vehicle.horsepower ? { icon: Gauge, label: 'Horsepower', value: `${vehicle.horsepower} hp` } : null,
-    vehicle.driveType ? { icon: Settings, label: 'Drive type', value: vehicle.driveType } : null,
-    vehicle.fuelType ? { icon: Fuel, label: 'Fuel type', value: vehicle.fuelType } : null,
+    vehicle.bodyStyle ? { icon: VBodyStyle, label: 'Body style', value: vehicle.bodyStyle } : null,
+    vehicle.doors ? { icon: VDoors, label: 'Doors', value: String(vehicle.doors) } : null,
+    vehicle.engine ? { icon: VEngine, label: 'Engine', value: vehicle.engine } : null,
+    vehicle.horsepower ? { icon: VHorsepower, label: 'Horsepower', value: `${vehicle.horsepower} hp` } : null,
+    vehicle.driveType ? { icon: VDriveType, label: 'Drive type', value: vehicle.driveType } : null,
+    vehicle.fuelType ? { icon: VFuelType, label: 'Fuel type', value: vehicle.fuelType } : null,
     vehicle.cityMpg && vehicle.highwayMpg
-      ? { icon: Gauge, label: 'Fuel economy', value: `${vehicle.cityMpg} city / ${vehicle.highwayMpg} hwy MPG`, wide: true }
+      ? { icon: VFuelEconomy, label: 'Fuel economy', value: `${vehicle.cityMpg} city / ${vehicle.highwayMpg} hwy MPG`, wide: true }
       : null,
     (() => {
       const place = [vehicle.plantCity, vehicle.plantCountry].filter(Boolean).join(', ');
-      return place ? { icon: MapPin, label: 'Assembled in', value: place, wide: true } : null;
+      return place ? { icon: VAssembledIn, label: 'Assembled in', value: place, wide: true } : null;
     })(),
-    vehicle.manufacturer ? { icon: Factory, label: 'Manufacturer', value: vehicle.manufacturer, wide: true } : null,
+    vehicle.manufacturer ? { icon: VManufacturer, label: 'Manufacturer', value: vehicle.manufacturer, wide: true } : null,
   ];
   const entries = raw.filter((e): e is SpecEntry => e !== null);
-  const compact = entries.filter((e) => !e.wide);
-  const wide = entries.filter((e) => e.wide);
-  // Pair compact specs two-across.
-  const pairs: SpecEntry[][] = [];
-  for (let i = 0; i < compact.length; i += 2) pairs.push(compact.slice(i, i + 2));
 
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
       <View style={styles.cardHeader}>
-        <FileText size={20} color={colors.primary} strokeWidth={2.2} />
+        <VSpecs size={20} color={colors.primary} />
         <Text style={[styles.cardHeaderText, { color: colors.text }]}>Specifications</Text>
       </View>
-      {pairs.map((pair, i) => (
-        <View key={`p${i}`} style={[styles.specRow, { borderColor: colors.border }]}>
-          <SpecCell {...pair[0]} />
-          <View style={[styles.specDivider, { backgroundColor: colors.border }]} />
-          {pair[1] ? <SpecCell {...pair[1]} /> : <View style={styles.specCell} />}
-        </View>
-      ))}
-      {wide.map((e) => (
-        <View key={e.label} style={[styles.specRow, { borderColor: colors.border }]}>
-          <SpecCell {...e} />
-        </View>
-      ))}
+      <SpecGrid entries={entries} />
     </View>
   );
 }
@@ -171,21 +87,21 @@ type Tone = 'info' | 'warn' | 'good';
  * crashes are informational (blue); open recalls and open investigations flag a
  * calm amber (never "danger" — CLAUDE.md copy rule); a clean zero reads green.
  */
-function SafetyOverview({ counts }: { counts: SafetyCounts }) {
+function SafetyOverview({ counts, model }: { counts: SafetyCounts; model: string }) {
   const { colors, radius } = useTheme();
   const openInv = counts.openInvestigations;
   const tones: Record<Tone, string> = { info: colors.primary, warn: colors.warning, good: colors.success };
-  const tiles: { icon: LucideIcon; value: number; label: string; tone: Tone }[] = [
-    { icon: MessageSquare, value: counts.complaints, tone: 'info', label: 'complaints' },
-    { icon: Siren, value: counts.crashes, tone: 'info', label: counts.crashes === 1 ? 'crash reported' : 'crashes reported' },
+  const tiles: { icon: IconCmp; value: number; label: string; tone: Tone }[] = [
+    { icon: VComplaints, value: counts.complaints, tone: 'info', label: 'complaints' },
+    { icon: VCrashes, value: counts.crashes, tone: 'info', label: counts.crashes === 1 ? 'crash' : 'crashes' },
     {
-      icon: TriangleAlert,
+      icon: VRecalls,
       value: counts.recalls,
       tone: counts.recalls > 0 ? 'warn' : 'good',
       label: counts.recalls === 1 ? 'open recall' : 'open recalls',
     },
     {
-      icon: openInv > 0 ? ShieldAlert : ShieldCheck,
+      icon: openInv > 0 ? VInvestigationsOpen : VInvestigationsClear,
       value: counts.investigations,
       tone: openInv > 0 ? 'warn' : 'good',
       label: counts.investigations === 1 ? 'investigation' : 'investigations',
@@ -195,15 +111,20 @@ function SafetyOverview({ counts }: { counts: SafetyCounts }) {
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
       <View style={styles.cardHeader}>
-        <ShieldCheck size={20} color={colors.primary} strokeWidth={2.2} />
+        <VSafety size={20} color={colors.primary} />
         <Text style={[styles.cardHeaderText, { color: colors.text }]}>Safety overview</Text>
       </View>
+      {/* Model-level NHTSA totals — the YMM framing tells the buyer these are
+          across the model, not this specific VIN. */}
+      <Text style={[styles.cardSub, { color: colors.textMuted }]}>
+        Across all {model} vehicles
+      </Text>
       <View style={styles.riskRow}>
         {tiles.map((t) => {
           const fg = tones[t.tone];
           return (
             <View key={t.label} style={[styles.riskTile, { backgroundColor: `${fg}14`, borderRadius: radius.md }]}>
-              <t.icon size={20} color={fg} strokeWidth={2.2} />
+              <t.icon size={22} color={fg} />
               <Text style={[styles.riskValue, { color: fg }]}>{t.value}</Text>
               <Text style={[styles.riskLabel, { color: colors.textMuted }]}>{t.label}</Text>
             </View>
@@ -353,7 +274,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
         {/* Hero identity — photo optional (free tier has none today → text hero). */}
-        <Hero vehicle={data.vehicle} plate={displayedPlate} />
+        <VehicleHero vehicle={data.vehicle} plate={displayedPlate} badge="Basic report" />
 
         {/* Specs returned by the free decode — year/make/model/trim already live
             in the hero title, so only NEW information appears here. */}
@@ -361,7 +282,12 @@ export default function BasicResultScreen({ navigation, route }: Props) {
 
         {/* Free safety overview — headline counts only, primes the upsell below.
             Hidden on older backends that don't return the counts. */}
-        {data.safetyCounts ? <SafetyOverview counts={data.safetyCounts} /> : null}
+        {data.safetyCounts ? (
+          <SafetyOverview
+            counts={data.safetyCounts}
+            model={[data.vehicle.year, data.vehicle.make, data.vehicle.model].filter(Boolean).join(' ')}
+          />
+        ) : null}
 
         {purchase ? (
           /* Report already purchased — never re-sell a non-consumable.
@@ -461,25 +387,11 @@ const styles = StyleSheet.create({
   vinCorrection: { alignItems: 'center', paddingVertical: 8 },
   vinCorrectionText: { fontSize: 14, textAlign: 'center' },
   vinCorrectionLink: { fontWeight: '700', textDecorationLine: 'underline' },
-  // Hero
-  hero: { borderWidth: 1, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  heroImage: { width: 108, height: 84 },
-  heroText: { flex: 1, gap: 4 },
-  heroTitle: { fontSize: 22, fontWeight: '800', lineHeight: 27 },
-  heroVin: { fontSize: 13.5 },
-  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, marginTop: 6 },
-  heroBadgeText: { fontSize: 13, fontWeight: '700' },
   // Cards (specs + safety)
   card: { borderWidth: 1, paddingHorizontal: 16, paddingBottom: 8, paddingTop: 14 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   cardHeaderText: { fontSize: 17, fontWeight: '800' },
-  // Specs
-  specRow: { flexDirection: 'row', alignItems: 'stretch', paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth },
-  specCell: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  specTextCol: { flex: 1, gap: 1 },
-  specDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginHorizontal: 10 },
-  specLabel: { fontSize: 12.5, fontWeight: '500' },
-  specValue: { fontSize: 14.5, fontWeight: '700' },
+  cardSub: { fontSize: 12.5, lineHeight: 17, marginBottom: 10, marginTop: -2 },
   // Safety tiles
   // Negative margin reclaims most of the card's 16px horizontal padding so the
   // four tiles get the full card width (the specs card keeps its padding).

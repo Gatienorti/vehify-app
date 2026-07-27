@@ -1,33 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  AlertTriangle,
-  Bell,
-  Car,
-  ChevronDown,
-  ChevronUp,
-  ClipboardList,
-  DollarSign,
-  Fuel,
-  Gauge,
-  Gavel,
-  Lightbulb,
-  Lock,
-  ShieldAlert,
-  Star,
-  Tag,
-  TrendingDown,
-  TrendingUp,
-  Users,
-  Wrench,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react-native';
+import { ChevronDown, ChevronUp, TrendingDown, TrendingUp } from 'lucide-react-native';
 import { useTheme } from '../theme';
+import {
+  VAuction,
+  VComparables,
+  VCrashSafety,
+  VDeal,
+  VDepreciation,
+  VEvOwnership,
+  VFactoryEquipment,
+  VFuelEconomy,
+  VHistorySummary,
+  VInvestigationsOpen,
+  VLock,
+  VMaintenance,
+  VMileage,
+  VOwnership,
+  VRecallsNotices,
+  VRecommendation,
+  VRedFlags,
+  VSpecs,
+  VTitleRecords,
+  VValuePricing,
+} from '../components/vehifyIcons';
 import MarketValueCurve from '../components/MarketValueCurve';
 import MileageHistoryChart from '../components/MileageHistoryChart';
-import VehicleCard from '../components/VehicleCard';
+import VehicleHero from '../components/VehicleHero';
+import SpecGrid, { type SpecEntry, type IconCmp } from '../components/SpecGrid';
 import ScoreBadge from '../components/ScoreBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
@@ -90,7 +91,7 @@ function StatRow({ label, value, bad }: { label: string; value: string; bad?: bo
 }
 
 /** Section header: muted icon normally; danger-tinted only when it holds a problem. */
-function SectionHeader({ title, icon: Icon, alert }: { title: string; icon?: LucideIcon; alert?: boolean }) {
+function SectionHeader({ title, icon: Icon, alert }: { title: string; icon?: IconCmp; alert?: boolean }) {
   const { colors } = useTheme();
   return (
     <View style={styles.sectionHeader}>
@@ -108,7 +109,7 @@ function Section({
   children,
 }: {
   title: string;
-  icon?: LucideIcon;
+  icon?: IconCmp;
   alert?: boolean;
   /** Complete-History (per-VIN) content — subtle brand accent, never severity colors. */
   premium?: boolean;
@@ -146,7 +147,7 @@ function CollapsibleSection({
   children,
 }: {
   title: string;
-  icon?: LucideIcon;
+  icon?: IconCmp;
   summary: string;
   defaultOpen?: boolean;
   /** Danger-tint the icon — a collapsed section may still hold a problem. */
@@ -195,51 +196,51 @@ function CollapsibleSection({
  * collapsed by default: it's reference material, not verdict.
  */
 function SpecificationsSection({ vehicle }: { vehicle: Vehicle }) {
-  const rows = (
+  // [label, value, wide?] — long values get a full-width row; the rest pair
+  // two-across in the shared SpecGrid (same layout as the Basic check).
+  const raw: [string, string | undefined, boolean?][] = [
+    ['Trim', vehicle.trim],
+    ['Displacement', vehicle.displacement ? `${vehicle.displacement} L` : undefined],
+    ['Cylinders', vehicle.cylinders ? String(vehicle.cylinders) : undefined],
+    ['Engine config', vehicle.engineConfiguration],
+    ['Turbo', vehicle.turbo],
+    ['Horsepower', vehicle.horsepower ? `${vehicle.horsepower} hp` : undefined],
     [
-      ['Trim', vehicle.trim],
-      ['Displacement', vehicle.displacement ? `${vehicle.displacement} L` : undefined],
-      ['Cylinders', vehicle.cylinders ? String(vehicle.cylinders) : undefined],
-      ['Engine config', vehicle.engineConfiguration],
-      ['Turbo', vehicle.turbo],
-      ['Horsepower', vehicle.horsepower ? `${vehicle.horsepower} hp` : undefined],
-      [
-        'Transmission',
-        vehicle.transmission
-          ? vehicle.transmissionSpeeds
-            ? `${vehicle.transmissionSpeeds}-speed ${vehicle.transmission}`
-            : vehicle.transmission
-          : undefined,
-      ],
-      ['Doors', vehicle.doors ? String(vehicle.doors) : undefined],
-      ['Seats', vehicle.seats ? String(vehicle.seats) : undefined],
-      ['Series', vehicle.series],
-      ['Vehicle type', vehicle.vehicleType],
-      [
-        'Assembled in',
-        [vehicle.plantCity, vehicle.plantCountry].filter(Boolean).join(', ') || undefined,
-      ],
-      ['GVWR class', vehicle.gvwrClass],
-      ['Wheelbase', vehicle.wheelbase ? `${vehicle.wheelbase} in` : undefined],
-      ['Curb weight', vehicle.curbWeight ? `${vehicle.curbWeight.toLocaleString()} lb` : undefined],
-      ['ABS', vehicle.abs],
-      ['Electrification', vehicle.electrification],
-      [
-        'Battery',
-        vehicle.batteryKwh
-          ? `${vehicle.batteryKwh} kWh${vehicle.batteryType ? ` ${vehicle.batteryType}` : ''}`
-          : vehicle.batteryType,
-      ],
-    ] satisfies [string, string | undefined][]
-  ).filter((entry): entry is [string, string] => Boolean(entry[1]));
+      'Transmission',
+      vehicle.transmission
+        ? vehicle.transmissionSpeeds
+          ? `${vehicle.transmissionSpeeds}-speed ${vehicle.transmission}`
+          : vehicle.transmission
+        : undefined,
+      true,
+    ],
+    ['Doors', vehicle.doors ? String(vehicle.doors) : undefined],
+    ['Seats', vehicle.seats ? String(vehicle.seats) : undefined],
+    ['Series', vehicle.series],
+    ['Vehicle type', vehicle.vehicleType],
+    ['Assembled in', [vehicle.plantCity, vehicle.plantCountry].filter(Boolean).join(', ') || undefined, true],
+    ['GVWR class', vehicle.gvwrClass],
+    ['Wheelbase', vehicle.wheelbase ? `${vehicle.wheelbase} in` : undefined],
+    ['Curb weight', vehicle.curbWeight ? `${vehicle.curbWeight.toLocaleString()} lb` : undefined],
+    ['ABS', vehicle.abs],
+    ['Electrification', vehicle.electrification],
+    [
+      'Battery',
+      vehicle.batteryKwh
+        ? `${vehicle.batteryKwh} kWh${vehicle.batteryType ? ` ${vehicle.batteryType}` : ''}`
+        : vehicle.batteryType,
+      true,
+    ],
+  ];
+  const entries: SpecEntry[] = raw
+    .filter((e): e is [string, string, boolean?] => Boolean(e[1]))
+    .map(([label, value, wide]) => ({ label, value, wide }));
 
-  if (rows.length === 0) return null;
+  if (entries.length === 0) return null;
 
   return (
-    <CollapsibleSection title="Specifications" icon={Car} summary={`${rows.length} details`} defaultOpen>
-      {rows.map(([label, value]) => (
-        <StatRow key={label} label={label} value={value} />
-      ))}
+    <CollapsibleSection title="Specifications" icon={VSpecs} summary={`${entries.length} details`} defaultOpen>
+      <SpecGrid entries={entries} />
     </CollapsibleSection>
   );
 }
@@ -258,7 +259,7 @@ function OwnershipCostSection({ cost, upsell }: { cost: OwnershipCost; upsell: b
   return (
     <CollapsibleSection
       title={`${cost.years}-year ownership cost`}
-      icon={DollarSign}
+      icon={VValuePricing}
       summary={`≈ $${cost.total.toLocaleString()}`}
       premium={cost.includesDepreciation}
       defaultOpen
@@ -577,7 +578,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
   // LEGACY pre-split Buyer reports that stored a curve — one definition so the
   // two spots can never drift.
   const valueCurveSection = curve.length ? (
-    <Section title="Value vs. mileage" icon={TrendingDown} premium>
+    <Section title="Value vs. mileage" icon={VDepreciation} premium>
       <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
         Estimated — projected from the current market value to show how
         mileage typically moves the price. Not per-mile sale data.
@@ -645,7 +646,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        <VehicleCard vehicle={data.vehicle} />
+        <VehicleHero vehicle={data.vehicle} badge={history ? 'Full report' : 'Buyer report'} />
 
         {/* The 5-second verdict: worst findings as chips (or a green all-clear).
             Everything below is the supporting evidence. */}
@@ -674,7 +675,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
             style={[styles.upsellHint, { backgroundColor: colors.primary }]}
           >
-            <Lock size={16} color={colors.onPrimary} strokeWidth={2.5} />
+            <VLock size={16} color={colors.onPrimary} />
             <Text style={[styles.upsellHintText, { color: colors.onPrimary }]}>
               Buy Score & records for this exact car
             </Text>
@@ -694,7 +695,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           <>
             {/* The verdict's evidence headline — badges, title brands,
                 accident/theft counts — directly under the Buy Score. */}
-            <Section title="History summary" icon={Car} alert={history.titleBrands.length > 0} premium>
+            <Section title="History summary" icon={VHistorySummary} alert={history.titleBrands.length > 0} premium>
               {/* The report's own badges — its official designations. */}
               {history.highlights?.length ? (
                 <View style={[styles.flagChipWrap, styles.highlightWrap]}>
@@ -763,7 +764,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 is thinner for older models. The scores and records are unaffected.
               </Text>
             ) : (
-              <Section title="Value & pricing" icon={DollarSign} premium>
+              <Section title="Value & pricing" icon={VValuePricing} premium>
                 {/* Headline: the market-value bell curve (same picture as the
                     web report) — estimate at the peak, below/above-market
                     shoulders, legacy asking price as a gold marker. A legacy
@@ -858,7 +859,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                 tier (history present), never on the analysis tier. We never fake a
                 timeline or claim a rollback check we didn't run. */}
             {history && analysis.mileageHistory.length ? (
-              <Section title="Mileage" icon={Gauge} alert={analysis.rollbackDetected} premium>
+              <Section title="Mileage" icon={VMileage} alert={analysis.rollbackDetected} premium>
                 <StatRow
                   label="Rollback check"
                   value={
@@ -887,7 +888,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             {/* The report's own findings — severity marks the DOT, not whole
                 paragraphs; red text is reserved for Alert-level findings. */}
             {conditionFlags.length ? (
-              <Section title="Report red flags" icon={AlertTriangle} alert premium>
+              <Section title="Report red flags" icon={VRedFlags} alert premium>
                 {conditionFlags.map((f, i) => {
                   const sevColor =
                     f.severity === 'Alert'
@@ -934,7 +935,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
             {/* Ownership timeline — usage patterns, never a person's identity. */}
             {history.ownerDetails?.length ? (
-              <Section title="Ownership timeline" icon={Users} premium>
+              <Section title="Ownership timeline" icon={VOwnership} premium>
                 {history.ownerDetails.map((o) => {
                   const sub = [
                     o.lengthOfOwnership ? `owned ${o.lengthOfOwnership}` : null,
@@ -966,7 +967,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
             {/* Empty sections shrink to one muted line — no empty cards. */}
             {history.auctionRecords.length ? (
-              <Section title="Auction history" icon={Gavel} premium>
+              <Section title="Auction history" icon={VAuction} premium>
                 {history.auctionRecords.map((a, i) => (
                   <StatRow
                     key={`${i}-${a.date}`}
@@ -986,7 +987,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             {history.adminRecords?.length ? (
               <CollapsibleSection
                 title="Title, registration & liens"
-                icon={ClipboardList}
+                icon={VTitleRecords}
                 summary={`${history.adminRecords.length} records`}
                 alert={history.adminRecords.some((r) => r.lien)}
                 premium
@@ -1004,7 +1005,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             {history.serviceHistory.length ? (
               <CollapsibleSection
                 title="Service & inspections"
-                icon={Wrench}
+                icon={VMaintenance}
                 summary={`${history.serviceHistory.length} records`}
                 premium
               >
@@ -1034,7 +1035,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             reports render whatever they paid for. New Buyer reports never
             compose these fields, so this block is absent for them. */}
         {!history && (analysis.estimatedValue || analysis.suggestedOffer || analysis.msrp) ? (
-          <Section title="Value & pricing" icon={DollarSign} premium>
+          <Section title="Value & pricing" icon={VValuePricing} premium>
             {analysis.estimatedValue ? (
               <StatRow
                 label={
@@ -1071,7 +1072,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             value there is nothing to grade (the Value section already says
             so), and without an asking price there is nothing to say. */}
         {deal?.verdict ? (
-          <Section title="The deal" icon={Tag} alert={deal.verdict === 'high'} premium>
+          <Section title="The deal" icon={VDeal} alert={deal.verdict === 'high'} premium>
             <View style={styles.dealPillRow}>
               <View style={[styles.dealPill, { backgroundColor: dealColor }]}>
                 <Text style={styles.dealPillText}>{dealVerdictLabel(deal.verdict)}</Text>
@@ -1099,7 +1100,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
             is never named. Auctions and branded-title cars are filtered out
             server-side. */}
         {analysis.listingComps?.items.length ? (
-          <Section title="Comparable listings" icon={Car}>
+          <Section title="Comparable listings" icon={VComparables}>
             <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
               {analysis.listingComps.count} recent asking{' '}
               {analysis.listingComps.count === 1 ? 'price' : 'prices'} for similar cars: $
@@ -1128,7 +1129,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         ) : null}
 
         {analysis.maintenanceOutlook ? (
-          <Section title="Maintenance outlook" icon={Wrench}>
+          <Section title="Maintenance outlook" icon={VMaintenance}>
             <Text style={[styles.cardBody, { color: colors.text }]}>{analysis.maintenanceOutlook}</Text>
           </Section>
         ) : null}
@@ -1138,7 +1139,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {analysis.investigations ? (
           <CollapsibleSection
             title="Investigations"
-            icon={ShieldAlert}
+            icon={VInvestigationsOpen}
             alert={analysis.investigations.open > 0}
             summary={`${analysis.investigations.total} on file${analysis.investigations.open > 0 ? ` · ${analysis.investigations.open} open` : ''}`}
             defaultOpen={!history || analysis.investigations.open > 0}
@@ -1187,7 +1188,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
 
         <CollapsibleSection
           title="Recalls & notices"
-          icon={Bell}
+          icon={VRecallsNotices}
           alert={analysis.openRecalls.length > 0}
           summary={`${analysis.openRecalls.length} open`}
           defaultOpen={!history || analysis.openRecalls.length > 0}
@@ -1231,7 +1232,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {analysis.safety ? (
           <CollapsibleSection
             title="Crash safety"
-            icon={Star}
+            icon={VCrashSafety}
             summary={`${Math.max(0, Math.min(5, analysis.safety.overall))}/5 overall`}
             defaultOpen
           >
@@ -1260,7 +1261,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {analysis.fuelEconomy ? (
           <CollapsibleSection
             title="Fuel economy"
-            icon={Fuel}
+            icon={VFuelEconomy}
             summary={`${analysis.fuelEconomy.combined_mpg} ${analysis.fuelEconomy.electric_range ? 'MPGe' : 'MPG'} combined`}
             defaultOpen
           >
@@ -1328,7 +1329,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {analysis.factoryEquipment.length ? (
           <CollapsibleSection
             title="Factory equipment"
-            icon={ClipboardList}
+            icon={VFactoryEquipment}
             summary={`${analysis.factoryEquipment.length} items`}
           >
             <Text style={[styles.cardBody, { color: colors.textMuted }]}>
@@ -1349,7 +1350,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {analysis.evOwnership ? (
           <CollapsibleSection
             title="EV ownership"
-            icon={Zap}
+            icon={VEvOwnership}
             summary={
               analysis.evOwnership.charging
                 ? `${analysis.evOwnership.charging.stationCount} chargers within ${analysis.evOwnership.charging.radiusMiles} mi`
@@ -1384,7 +1385,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         ) : null}
 
         {/* The wrap-up — after all the evidence, not before it. */}
-        <Section title="Our recommendation" icon={Lightbulb}>
+        <Section title="Our recommendation" icon={VRecommendation}>
           <Text style={[styles.cardBody, styles.reco, { color: colors.text }]}>
             {analysis.recommendation}
           </Text>
@@ -1396,7 +1397,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {!history ? (
           <View style={[styles.lockedCard, { backgroundColor: colors.surfaceAlt }]}>
             <View style={styles.lockedHeader}>
-              <Lock size={18} color={colors.premium} strokeWidth={2.5} />
+              <VLock size={18} color={colors.premium} />
               <Text style={[styles.lockedTitle, { color: colors.text }]}>
                 {analysis.modelScore?.band === 'green'
                   ? 'Model checks out — now verify this exact car'

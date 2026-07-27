@@ -5,6 +5,8 @@ import { CircleCheckBig } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import PrimaryButton from '../components/PrimaryButton';
 import LoadingOverlay from '../components/LoadingOverlay';
+import VehicleHero from '../components/VehicleHero';
+import { useGetVehicleBasicQuery } from '../services/api';
 import { track } from '../config/analytics';
 import { BUILDING_REPORT_MESSAGES } from '../config/loadingMessages';
 import { PurchaseCancelledError, usePurchaseReport } from '../hooks/usePurchaseReport';
@@ -62,6 +64,10 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const { balance } = useCredits();
   const creditCost = creditCostFor(tier, tier === 'complete_history');
   const useCredit = balance >= creditCost;
+  // Cache hit — the user always reaches the upsell from Basic/report, which
+  // already decoded this VIN. Shows the same hero for continuity; skipped if
+  // somehow uncached (no extra network on the miss path either — it's a lookup).
+  const { data: basic } = useGetVehicleBasicQuery(vin);
   const title = isAnalysis ? 'Buyer Report' : 'Premium Report';
   const included = isAnalysis ? ANALYSIS_INCLUDED : HISTORY_INCLUDED;
   const price = isAnalysis ? PRICING.buyersAnalysis : PRICING.completeUpgrade;
@@ -117,6 +123,9 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+        {/* Same hero as Basic/report — continuity while the user decides. */}
+        {basic ? <VehicleHero vehicle={basic.vehicle} badge={title} /> : null}
+
         {/* Compact reminder of what's included (the hard sell already
             happened on the basic page). */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
