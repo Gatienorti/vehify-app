@@ -21,11 +21,11 @@ describe('historySlice', () => {
     expect(state.hydrated).toBe(true);
   });
 
-  it('de-dupes on VIN, newest first', () => {
+  it('keeps repeated scans of the same VIN as separate entries', () => {
     let state = reducer(undefined, addEntry(entry('A')));
     state = reducer(state, addEntry(entry('B')));
-    state = reducer(state, addEntry(entry('A')));
-    expect(state.entries.map((e) => e.vin)).toEqual(['A', 'B']);
+    state = reducer(state, addEntry({ ...entry('A'), id: 'A-2' }));
+    expect(state.entries.map((e) => e.id)).toEqual(['A-2', 'B-1', 'A-1']);
   });
 
   it('marks an entry purchased with a tier and report id', () => {
@@ -48,13 +48,36 @@ describe('historySlice', () => {
     expect(state.entries[0]).toMatchObject({ tier: 'complete_history', reportId: 'r2' });
   });
 
-  it('re-scanning a purchased VIN keeps the purchase on the new entry', () => {
+  it('re-scanning a purchased VIN starts a new basic chain', () => {
     let state = reducer(undefined, addEntry(entry('A')));
     state = reducer(state, markPurchased({ vin: 'A', tier: 'buyers_analysis', reportId: 'r1' }));
-    // A fresh lookup of the same car always arrives as tier 'basic'.
     state = reducer(state, addEntry({ ...entry('A'), id: 'A-2' }));
-    expect(state.entries).toHaveLength(1);
-    expect(state.entries[0]).toMatchObject({ id: 'A-2', tier: 'buyers_analysis', reportId: 'r1' });
+    expect(state.entries).toHaveLength(2);
+    expect(state.entries[0]).toMatchObject({ id: 'A-2', tier: 'basic' });
+    expect(state.entries[1]).toMatchObject({ id: 'A-1', tier: 'buyers_analysis', reportId: 'r1' });
+  });
+
+  it('upgrades the exact Buyer chain when the VIN appears more than once', () => {
+    let state = reducer(undefined, addEntry(entry('A')));
+    state = reducer(state, markPurchased({ vin: 'A', tier: 'buyers_analysis', reportId: 'r1' }));
+    state = reducer(state, addEntry({ ...entry('A'), id: 'A-2' }));
+    state = reducer(state, markPurchased({ vin: 'A', tier: 'buyers_analysis', reportId: 'r2' }));
+
+    state = reducer(state, markPurchased({
+      vin: 'A',
+      tier: 'complete_history',
+      reportId: 'r3',
+      upgradeFromReportId: 'r1',
+    }));
+
+    expect(state.entries.find((item) => item.id === 'A-1')).toMatchObject({
+      tier: 'complete_history',
+      reportId: 'r3',
+    });
+    expect(state.entries.find((item) => item.id === 'A-2')).toMatchObject({
+      tier: 'buyers_analysis',
+      reportId: 'r2',
+    });
   });
 
   it('clears history', () => {

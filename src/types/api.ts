@@ -35,6 +35,7 @@ export interface PurchaseStartRequest {
   vin: string;
   tier: PaidTier;
   productId: string;
+  upgradeFromReportId?: string;
 }
 
 export interface PurchaseStartResponse {
@@ -83,6 +84,7 @@ export interface CreditsResponse {
 export interface RedeemReportRequest {
   vin: string;
   tier: PaidTier;
+  upgradeFromReportId?: string;
   /**
    * Client-stable key for this purchase attempt. A retry after a dropped
    * response reuses it so the backend returns the same report instead of

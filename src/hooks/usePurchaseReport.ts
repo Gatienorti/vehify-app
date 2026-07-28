@@ -87,10 +87,10 @@ export function usePurchaseReport() {
   const redeemKeyRef = useRef<{ key: string; token: string } | null>(null);
 
   const buy = useCallback(
-    async (vin: string, tier: PaidTier): Promise<PurchaseConfirmResponse> => {
+    async (vin: string, tier: PaidTier, upgradeFromReportId?: string): Promise<PurchaseConfirmResponse> => {
       track('premium_purchase_started', { vin, tier });
       setBuying(true);
-      const attemptKey = `${vin}|${tier}`;
+      const attemptKey = `${vin}|${tier}|${upgradeFromReportId ?? 'direct'}`;
       try {
         // 1. Reserve server-side.
         let purchaseToken = startTokenRef.current?.key === attemptKey ? startTokenRef.current.token : null;
@@ -99,6 +99,7 @@ export function usePurchaseReport() {
             vin,
             tier,
             productId: PRODUCT_IDS[tier],
+            upgradeFromReportId,
           }).unwrap();
           purchaseToken = start.purchaseToken;
           startTokenRef.current = { key: attemptKey, token: purchaseToken };
@@ -123,7 +124,7 @@ export function usePurchaseReport() {
         paidTxRef.current = null;
         // Optimistic paint of the local history badge; the server (via the
         // Purchases/History tag invalidation) is the real ownership record.
-        dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId }));
+        dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId, upgradeFromReportId }));
         track('premium_purchase_completed', { vin, tier: confirm.tier });
         return confirm;
       } catch (e) {
@@ -156,11 +157,11 @@ export function usePurchaseReport() {
    * re-validates and rejects otherwise. Throws on failure (caller owns retry).
    */
   const redeem = useCallback(
-    async (vin: string, tier: PaidTier): Promise<PurchaseConfirmResponse> => {
+    async (vin: string, tier: PaidTier, upgradeFromReportId?: string): Promise<PurchaseConfirmResponse> => {
       track('credit_redeem_started', { vin, tier });
       setBuying(true);
       // Stable across retries of the same attempt.
-      const attemptKey = `${vin}|${tier}`;
+      const attemptKey = `${vin}|${tier}|${upgradeFromReportId ?? 'direct'}`;
       const idempotencyKey =
         redeemKeyRef.current?.key === attemptKey
           ? redeemKeyRef.current.token
@@ -170,11 +171,12 @@ export function usePurchaseReport() {
         const confirm = await redeemReport({
           vin,
           tier,
+          upgradeFromReportId,
           idempotencyKey,
         }).unwrap();
         // Settled — the next purchase gets a fresh key.
         redeemKeyRef.current = null;
-        dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId }));
+        dispatch(markPurchased({ vin, tier: confirm.tier, reportId: confirm.reportId, upgradeFromReportId }));
         track('credit_redeemed', { vin, tier: confirm.tier });
         return confirm;
       } catch (e) {

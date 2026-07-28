@@ -28,7 +28,6 @@ import LoadingOverlay from '../components/LoadingOverlay';
 import { BUILDING_REPORT_MESSAGES, VIN_DECODE_MESSAGES } from '../config/loadingMessages';
 import { track } from '../config/analytics';
 import {
-  useGetPurchasesQuery,
   useGetVehicleBasicQuery,
   useLookupVinMutation,
 } from '../services/api';
@@ -166,10 +165,6 @@ export default function BasicResultScreen({ navigation, route }: Props) {
   }, [lookup, runDecode]);
 
   const { data, isLoading, isError, refetch } = useGetVehicleBasicQuery(vin, { skip: !decoded });
-  // Ownership comes from the SERVER (device_id / user_id), never a local cache
-  // that can claim a report the backend no longer has.
-  const { data: purchases } = useGetPurchasesQuery();
-  const purchase = purchases?.find((r) => r.vin === vin && r.reportId);
   const { buy, redeem, buying } = usePurchaseReport();
   // Credits-first: if the buyer holds enough credits, spend them instead of an
   // in-app purchase. Not enough (incl. zero) → the $ path, with no credit
@@ -182,16 +177,6 @@ export default function BasicResultScreen({ navigation, route }: Props) {
     track('vehicle_rejected');
     navigation.navigate('ScanReview', { mode: 'vin', manual: true });
   };
-
-  // Fresh from scan + report already owned → straight to it; this page would
-  // only offer "View your report" anyway. (Only on the `lookup` arrival —
-  // a deliberate visit to Basic from elsewhere stays put.)
-  const ownedReportId = lookup && purchase ? purchase.reportId : null;
-  const ownedTier = purchase?.tier;
-  useEffect(() => {
-    if (!decoded || !ownedReportId || !ownedTier) return;
-    navigation.replace('PremiumReport', { vin, reportId: ownedReportId, tier: ownedTier });
-  }, [decoded, ownedReportId, ownedTier, navigation, vin]);
 
   useEffect(() => {
     track('basic_report_viewed', { vin });
@@ -289,36 +274,18 @@ export default function BasicResultScreen({ navigation, route }: Props) {
           />
         ) : null}
 
-        {purchase ? (
-          /* Report already purchased — never re-sell a non-consumable.
-             replace (not navigate): back from the report should skip this
-             screen and land on Scan. */
-          <PrimaryButton
-            label="View your report"
-            onPress={() =>
-              navigation.replace('PremiumReport', {
-                vin,
-                reportId: purchase.reportId,
-                tier: purchase.tier,
-              })
-            }
-          />
-        ) : (
-          /* Upsell to Buyer's Analysis — the funnel's money moment, sold as a
-             proper offer card, not a gray paragraph. Honesty: the Buyer
-             Report judges the MODEL (score, recalls, safety, upkeep);
-             valuation and the per-VIN Buy Score are the Premium promise,
-             never implied here. */
-          <View
-            style={[
-              styles.upsell,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.primary,
-                borderRadius: radius.lg,
-              },
-            ]}
-          >
+        {/* Every explicit scan starts a new report chain, even when this VIN
+            was checked before. Older reports remain available in History. */}
+        <View
+          style={[
+            styles.upsell,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.primary,
+              borderRadius: radius.lg,
+            },
+          ]}
+        >
             <Text style={[styles.upsellTitle, { color: colors.text }]}>
               Should you buy this car?
             </Text>
@@ -354,10 +321,9 @@ export default function BasicResultScreen({ navigation, route }: Props) {
               }}
               style={{ marginTop: 6 }}
             />
-          </View>
-        )}
+        </View>
 
-        {displayedPlate && !purchase ? (
+        {displayedPlate ? (
           <Pressable
             accessibilityRole="link"
             accessibilityLabel="Not the right car? Enter the VIN"

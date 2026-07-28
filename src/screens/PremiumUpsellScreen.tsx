@@ -54,7 +54,7 @@ const HISTORY_INCLUDED: IncludedLine[] = [
 export default function PremiumUpsellScreen({ navigation, route }: Props) {
   const { colors, spacing, radius } = useTheme();
   useCreditHeaderButton();
-  const { vin, tier } = route.params;
+  const { vin, tier, upgradeFromReportId } = route.params;
   const { buy, redeem, buying } = usePurchaseReport();
 
   const isAnalysis = tier === 'buyers_analysis';
@@ -89,7 +89,9 @@ export default function PremiumUpsellScreen({ navigation, route }: Props) {
 
   const doBuy = async () => {
     try {
-      const confirm = useCredit ? await redeem(vin, tier) : await buy(vin, tier);
+      const confirm = useCredit
+        ? await redeem(vin, tier, upgradeFromReportId)
+        : await buy(vin, tier, upgradeFromReportId);
       if (isAnalysis) {
         // Rebuild the stack as Tabs → Report: once the report is owned, the
         // basic page below is redundant — back should land on Scan.

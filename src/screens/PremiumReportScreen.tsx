@@ -810,7 +810,11 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="See Premium upgrade"
-            onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
+            onPress={() => navigation.navigate('PremiumUpsell', {
+              vin,
+              tier: 'complete_history',
+              upgradeFromReportId: data?.id ?? reportId,
+            })}
             style={[styles.upsellHint, { backgroundColor: colors.primary }]}
           >
             <VLock size={16} color={colors.onPrimary} />
@@ -1614,7 +1618,11 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
                   ? `${creditLabel(upgradeCreditCost)} — Premium Report`
                   : `Add Premium Report — +${formatUsd(PRICING.completeUpgrade)}`
               }
-              onPress={() => navigation.navigate('PremiumUpsell', { vin, tier: 'complete_history' })}
+              onPress={() => navigation.navigate('PremiumUpsell', {
+                vin,
+                tier: 'complete_history',
+                upgradeFromReportId: data?.id ?? reportId,
+              })}
               style={{ marginTop: 12 }}
             />
           </View>

@@ -58,7 +58,7 @@ export type RootStackParamList = {
    * Upsell for a paid tier. `tier` selects Buyer's Analysis vs the Complete
    * History upgrade.
    */
-  PremiumUpsell: { vin: string; tier: PaidTier };
+  PremiumUpsell: { vin: string; tier: PaidTier; upgradeFromReportId?: string };
   PremiumReport: { vin: string; reportId?: string; tier: PaidTier };
 };
 

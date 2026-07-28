@@ -21,16 +21,9 @@ const historySlice = createSlice({
       state.hydrated = true;
     },
     addEntry(state, action: PayloadAction<HistoryEntry>) {
-      // De-dupe on VIN — keep the most recent lookup at the top. A re-scan
-      // must never erase a purchase: carry the higher tier + reportId over
-      // from the entry being replaced.
-      const existing = state.entries.find((e) => e.vin === action.payload.vin);
-      const entry = { ...action.payload };
-      if (existing && !tierAtLeast(entry.tier, existing.tier)) {
-        entry.tier = existing.tier;
-        entry.reportId = existing.reportId;
-      }
-      state.entries = [entry, ...state.entries.filter((e) => e.vin !== entry.vin)];
+      // Every explicit scan is a new report chain. Only de-dupe a replay of
+      // the exact local event id; another scan of the same VIN stays separate.
+      state.entries = [action.payload, ...state.entries.filter((e) => e.id !== action.payload.id)];
     },
     /**
      * Record a completed purchase. Only ever upgrades the tier
@@ -38,9 +31,17 @@ const historySlice = createSlice({
      */
     markPurchased(
       state,
-      action: PayloadAction<{ vin: string; tier: PaidTier; reportId: string }>,
+      action: PayloadAction<{
+        vin: string;
+        tier: PaidTier;
+        reportId: string;
+        upgradeFromReportId?: string;
+      }>,
     ) {
-      const entry = state.entries.find((e) => e.vin === action.payload.vin);
+      const entry = action.payload.upgradeFromReportId
+        ? state.entries.find((e) => e.reportId === action.payload.upgradeFromReportId)
+        : state.entries.find((e) => e.vin === action.payload.vin && e.tier === 'basic')
+          ?? state.entries.find((e) => e.vin === action.payload.vin);
       // Same-tier re-confirm (e.g. restore) may refresh the reportId; a
       // lower tier arriving late must not clobber a higher one.
       if (entry && tierAtLeast(action.payload.tier, entry.tier)) {
