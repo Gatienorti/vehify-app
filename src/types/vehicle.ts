@@ -321,6 +321,18 @@ export interface BuyersAnalysis {
    */
   valueByMileage?: { mileage: number; estimate: number }[];
   /**
+   * MSRP depreciation by model year — buyer report only (empty on premium).
+   * One point per year from model year to now+2. Sample to 5 for display.
+   */
+  msrpCurveByAge?: { year: number; value: number }[] | null;
+  /**
+   * MSRP depreciation by mileage — buyer report only (empty on premium).
+   * 5 dynamic breakpoints centered on expected mileage for the car's age.
+   */
+  msrpCurveByMileage?: { miles: number; value: number }[] | null;
+  /** 'openai' when MSRP was estimated by AI — show an "est." label. */
+  msrpSource?: 'openai' | null;
+  /**
    * The vendor history report's own retail valuation (Premium only) — a
    * second anchor shown beside estimatedValue, never mixed into the verdict.
    */

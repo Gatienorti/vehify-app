@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronDown, ChevronUp, TrendingDown, TrendingUp } from 'lucide-react-native';
 import { useTheme } from '../theme';
@@ -93,6 +93,11 @@ const GENERATING_POLL_MS = 2500;
  * shows the failure screen.
  */
 const GENERATING_CAP_MS = 180_000;
+
+function sampleCurve<T>(arr: T[], n: number): T[] {
+  if (arr.length <= n) return arr;
+  return Array.from({ length: n }, (_, i) => arr[Math.round((i * (arr.length - 1)) / (n - 1))]);
+}
 
 function reportAgeDays(generatedAt: string | null | undefined): number | null {
   if (!generatedAt) return null;
@@ -547,7 +552,11 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
     try {
       const transactionId = await purchaseThroughStore(REPORT_REFRESH_PRODUCT_ID);
       // The backend verifies + consumes this exact transaction (once).
-      await refreshReport({ id: data.id, transactionId }).unwrap();
+      await refreshReport({
+        id: data.id,
+        transactionId,
+        platform: Platform.OS === 'android' ? 'android' : 'ios',
+      }).unwrap();
     } catch (e) {
       if (!(e instanceof PurchaseCancelledError)) {
         Alert.alert('Update didn’t complete', 'Please try again.');
@@ -1166,7 +1175,7 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
         {/* LEGACY pre-split Buyer reports stored valuation at this tier — old
             reports render whatever they paid for. New Buyer reports never
             compose these fields, so this block is absent for them. */}
-        {!history && (analysis.estimatedValue || analysis.suggestedOffer || analysis.msrp) ? (
+        {!history && (analysis.estimatedValue || analysis.suggestedOffer) ? (
           <Section title="Value & pricing" icon={VValuePricing} premium>
             {analysis.estimatedValue ? (
               <StatRow
@@ -1221,6 +1230,61 @@ export default function PremiumReportScreen({ navigation, route }: Props) {
               />
             ) : null}
             <Text style={[styles.cardBody, { color: colors.text }]}>{deal.reason}</Text>
+          </Section>
+        ) : null}
+
+        {/* MSRP depreciation curves — buyer report only; backend sends empty
+            arrays for premium so the length guard doubles as a tier gate. */}
+        {analysis.msrpCurveByAge?.length ? (
+          <Section title="Value by year" icon={VDepreciation}>
+            {analysis.msrpSource === 'openai' ? (
+              <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
+                Estimated from original MSRP depreciation over time.
+              </Text>
+            ) : null}
+            {sampleCurve(analysis.msrpCurveByAge, 5).map((p) => (
+              <View key={p.year} style={styles.curveRow}>
+                <Text style={[styles.curveLabel, { color: colors.textMuted }]}>{p.year}</Text>
+                <View style={[styles.curveTrack, { backgroundColor: colors.surfaceAlt }]}>
+                  <View
+                    style={[
+                      styles.curveBar,
+                      {
+                        width: `${Math.round((p.value / analysis.msrpCurveByAge![0].value) * 100)}%`,
+                        backgroundColor: colors.primary,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.curveValue, { color: colors.text }]}>{`$${p.value.toLocaleString()}`}</Text>
+              </View>
+            ))}
+          </Section>
+        ) : null}
+        {analysis.msrpCurveByMileage?.length ? (
+          <Section title="Value by mileage" icon={VDepreciation}>
+            {analysis.msrpSource === 'openai' ? (
+              <Text style={[styles.cardBody, { color: colors.textMuted, marginBottom: 8 }]}>
+                Estimated — today&apos;s value adjusted for mileage vs. expected for this car&apos;s age.
+              </Text>
+            ) : null}
+            {analysis.msrpCurveByMileage.map((p) => (
+              <View key={p.miles} style={styles.curveRow}>
+                <Text style={[styles.curveLabel, { color: colors.textMuted }]}>{`${Math.round(p.miles / 1000)}k`}</Text>
+                <View style={[styles.curveTrack, { backgroundColor: colors.surfaceAlt }]}>
+                  <View
+                    style={[
+                      styles.curveBar,
+                      {
+                        width: `${Math.round((p.value / analysis.msrpCurveByMileage![0].value) * 100)}%`,
+                        backgroundColor: colors.primary,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.curveValue, { color: colors.text }]}>{`$${p.value.toLocaleString()}`}</Text>
+              </View>
+            ))}
           </Section>
         ) : null}
 

@@ -143,11 +143,14 @@ export const api = createApi({
     // banner). Paid via the report_refresh consumable — the store transaction
     // id is verified server-side and consumed exactly once. Queued: the
     // response is the generating payload and the report polls back to ready.
-    refreshReport: builder.mutation<ReportRequeuedResponse, { id: string; transactionId?: string }>({
-      query: ({ id, transactionId }) => ({
+    refreshReport: builder.mutation<
+      ReportRequeuedResponse,
+      { id: string; transactionId?: string; platform?: 'ios' | 'android' }
+    >({
+      query: ({ id, transactionId, platform }) => ({
         url: `/report/${id}/refresh`,
         method: 'POST',
-        body: transactionId ? { transactionId } : {},
+        body: transactionId ? { transactionId, platform } : {},
       }),
       invalidatesTags: (_r, _e, arg) => [{ type: 'Report', id: arg.id }],
     }),

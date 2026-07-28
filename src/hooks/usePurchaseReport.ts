@@ -48,7 +48,12 @@ export async function purchaseThroughStore(productId: string): Promise<string> {
   }
   try {
     const result = await Purchases.purchaseStoreProduct(product);
-    return result.transaction?.transactionIdentifier ?? `rc-${result.customerInfo.originalAppUserId}-${productId}`;
+    const transactionId = result.transaction?.transactionIdentifier;
+    if (!transactionId) {
+      throw new Error('RevenueCat did not return a store transaction identifier');
+    }
+
+    return transactionId;
   } catch (e) {
     if ((e as { userCancelled?: boolean }).userCancelled) throw new PurchaseCancelledError();
     throw e;

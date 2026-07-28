@@ -327,6 +327,7 @@ export default function BasicResultScreen({ navigation, route }: Props) {
                 { label: 'Model Score — real complaints, recalls & federal investigations' },
                 { label: 'Crash ratings, fuel costs & open recalls', starred: true },
                 { label: 'Recent comparable listings', starred: true },
+                { label: 'Estimated value by year and mileage', starred: true },
                 { label: 'Maintenance outlook & plain-English recommendation' },
               ] as { label: string; starred?: boolean }[]
             ).map((line) => (
